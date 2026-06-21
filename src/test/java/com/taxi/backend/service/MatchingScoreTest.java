@@ -35,7 +35,7 @@ class MatchingScoreTest {
 
     private MatchingService.MatchedDriver d(long id, double distanceKm, double activity, LocalDateTime freeSince) {
         return new MatchingService.MatchedDriver(id, "D" + id, "Model", "0" + id,
-                41.3, 69.6, distanceKm, 3.0, 5.0, "EKONOM,DAMAS,BIZNES", activity, freeSince);
+                41.3, 69.6, distanceKm, 3.0, 5.0, "EKONOM,DAMAS,BIZNES", null, activity, freeSince);
     }
 
     @Test

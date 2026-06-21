@@ -371,6 +371,49 @@ public class AdminService {
         return result;
     }
 
+    /** A2 — Admin haydovchiga tarif grant beradi (mashina defaultidan tashqari). granted=null/bo'sh → tozalaydi.
+     *  Effektiv eligibility = eligibleTariffs(carModel) ∪ grants. STANDART har doim default (grantda saqlanmaydi). */
+    public Map<String, Object> setDriverTariffGrants(Long driverId, java.util.List<String> granted) {
+        Driver driver = driverRepository.findById(driverId)
+                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
+
+        String grants = null;
+        if (granted != null && !granted.isEmpty()) {
+            java.util.LinkedHashSet<String> set = new java.util.LinkedHashSet<>();
+            for (String g : granted) {
+                if (g == null) continue;
+                String n = g.trim().toUpperCase();
+                if (!n.isBlank() && !"STANDART".equals(n)) set.add(n);
+            }
+            grants = set.isEmpty() ? null : String.join(",", set);
+        }
+        driver.setTariffGrants(grants);
+        driverRepository.save(driver);
+
+        java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("driverId", driverId);
+        result.put("carModel", driver.getCarModel());
+        result.put("tariffGrants", grants);
+        result.put("effectiveEligible",
+                new java.util.ArrayList<>(DriverTariffFilter.eligibleTariffs(driver.getCarModel(), grants)));
+        return result;
+    }
+
+    /** A2 — Haydovchining joriy grant holati (read-only): car-default vs effektiv eligibility. */
+    public Map<String, Object> getDriverTariffGrants(Long driverId) {
+        Driver driver = driverRepository.findById(driverId)
+                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
+        java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("driverId", driverId);
+        result.put("carModel", driver.getCarModel());
+        result.put("tariffGrants", driver.getTariffGrants());
+        result.put("carDefaultEligible",
+                new java.util.ArrayList<>(DriverTariffFilter.eligibleTariffs(driver.getCarModel(), null)));
+        result.put("effectiveEligible",
+                new java.util.ArrayList<>(DriverTariffFilter.eligibleTariffs(driver.getCarModel(), driver.getTariffGrants())));
+        return result;
+    }
+
     /** Barcha sharhlar (Ratings) */
     @Transactional(readOnly = true)
     public Page<RatingResponse> getAllRatings(Pageable pageable) {

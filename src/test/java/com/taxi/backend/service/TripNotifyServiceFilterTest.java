@@ -49,9 +49,9 @@ class TripNotifyServiceFilterTest {
         trip.setSelectedServices("ROOF_LUGGAGE");
 
         var missing = new MatchingService.MatchedDriver(7L, "Xizmatsiz", "Cobalt", "01A777AA",
-                41.30, 69.60, 1.0, 3.0, 5.0, "EKONOM,DAMAS,BIZNES", 0.0, null);
+                41.30, 69.60, 1.0, 3.0, 5.0, "EKONOM,DAMAS,BIZNES", null, 0.0, null);
         var has = new MatchingService.MatchedDriver(8L, "Xizmatli", "Nexia", "01A888BB",
-                41.30, 69.60, 1.2, 4.0, 5.0, "EKONOM,DAMAS,BIZNES", 0.0, null);
+                41.30, 69.60, 1.2, 4.0, 5.0, "EKONOM,DAMAS,BIZNES", null, 0.0, null);
         when(matchingService.findNearbyDrivers(anyDouble(), anyDouble(), anyDouble()))
                 .thenReturn(List.of(missing, has));
         when(tripRepository.findBusyDriverIds(TripStatus.ACTIVE_DRIVER_STATUSES)).thenReturn(List.of());

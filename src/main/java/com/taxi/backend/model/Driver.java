@@ -85,6 +85,11 @@ public class Driver {
     @Column(name = "accepted_tariffs")
     private String acceptedTariffs = "EKONOM,DAMAS,BIZNES";
 
+    /** A2 — Admin qo'lda BERGAN tariflar (vergul bilan), mashina-modeli defaultidan TASHQARI.
+     *  Effektiv eligibility = eligibleTariffs(carModel) ∪ tariffGrants. */
+    @Column(name = "tariff_grants")
+    private String tariffGrants;
+
     @Column(name = "push_token", length = 500)
     private String pushToken;
 
@@ -259,6 +264,9 @@ public class Driver {
 
     public String getAcceptedTariffs() { return acceptedTariffs; }
     public void setAcceptedTariffs(String acceptedTariffs) { this.acceptedTariffs = acceptedTariffs; }
+
+    public String getTariffGrants() { return tariffGrants; }
+    public void setTariffGrants(String tariffGrants) { this.tariffGrants = tariffGrants; }
 
     public String getPushToken() { return pushToken; }
     public void setPushToken(String pushToken) { this.pushToken = pushToken; }

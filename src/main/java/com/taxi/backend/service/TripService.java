@@ -382,7 +382,7 @@ public class TripService {
         //  lekin mashinasiga mos kelmaydigan tarifni QABUL qila olmaydi.)
         String tariffName = trip.getTariff() != null ? trip.getTariff().getName() : null;
         if (tariffName != null && !tariffName.isBlank()) {
-            Set<String> eligible = DriverTariffFilter.eligibleTariffs(driver.getCarModel());
+            Set<String> eligible = DriverTariffFilter.eligibleTariffs(driver.getCarModel(), driver.getTariffGrants());
             if (!eligible.contains(tariffName.trim().toUpperCase())) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Bu tarif (" + tariffName + ") sizning mashinangizga ("

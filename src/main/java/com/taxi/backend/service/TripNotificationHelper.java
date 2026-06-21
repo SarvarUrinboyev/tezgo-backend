@@ -77,7 +77,7 @@ public class TripNotificationHelper {
         for (MatchingService.MatchedDriver c : candidates) {
             if (excluded.contains(c.driverId())) continue;
             if (busy.contains(c.driverId())) continue;
-            if (!driverAcceptsTariff(c.carModel(), c.acceptedTariffs(), tariffName)) continue;
+            if (!driverAcceptsTariff(c.carModel(), c.acceptedTariffs(), c.tariffGrants(), tariffName)) continue;
             if (!DriverServiceFilter.accepts(enabledByDriver.get(c.driverId()), selectedServices)) continue;
             sendNewOrderNotification(c.driverId(), trip, (int) Math.ceil(c.etaMinutes()));
             notifiedIds.add(c.driverId());
@@ -98,7 +98,7 @@ public class TripNotificationHelper {
                     if (excluded.contains(d.getId())) return; // bekor qilgan haydovchi — skip
                     if (busy.contains(d.getId())) return; // faol tripi bor — skip
                     if (d.isInCooldown()) return; // rad etish cooldown'i — skip
-                    if (!driverAcceptsTariff(d.getCarModel(), d.getAcceptedTariffs(), tariffName)) return;
+                    if (!driverAcceptsTariff(d.getCarModel(), d.getAcceptedTariffs(), d.getTariffGrants(), tariffName)) return;
                     if (d.getBalance() != null && d.getBalance() < 0) return; // Manfiy balans — skip
                     if (!DriverServiceFilter.accepts(fbEnabled.get(d.getId()), selectedServices)) return; // xizmat mos emas
                     sendNewOrderNotification(d.getId(), trip, -1);
@@ -130,13 +130,15 @@ public class TripNotificationHelper {
     }
 
     /** Haydovchi berilgan tarifni qabul qilishini tekshirish */
-    private boolean driverAcceptsTariff(String carModel, String acceptedTariffs, String tariffName) {
+    private boolean driverAcceptsTariff(String carModel, String acceptedTariffs, String tariffGrants, String tariffName) {
         com.taxi.backend.model.Driver driver = new com.taxi.backend.model.Driver();
         // MUHIM: carModel ham o'rnatilishi SHART — DriverTariffFilter avval mashina modeliga
         // qarab eligibleTariffs ni hisoblaydi. carModel=null bo'lsa faqat {STANDART} chiqadi va
         // KOMFORT/DAMAS/ELECTRO/BIZNES buyurtmalar HECH KIMGA yuborilmaydi.
+        // tariffGrants — admin qo'lda bergan tariflar (A2) ham hisobga olinadi.
         driver.setCarModel(carModel);
         driver.setAcceptedTariffs(acceptedTariffs);
+        driver.setTariffGrants(tariffGrants);
         return DriverTariffFilter.accepts(driver, tariffName);
     }
 

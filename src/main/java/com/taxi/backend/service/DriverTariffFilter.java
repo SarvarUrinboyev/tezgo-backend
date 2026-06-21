@@ -30,34 +30,47 @@ public final class DriverTariffFilter {
      * buyurtma tarifi shu to'plamda bo'lmasa — haydovchi mashinasi mos emas.
      */
     public static Set<String> eligibleTariffs(String carModel) {
+        return eligibleTariffs(carModel, null);
+    }
+
+    /**
+     * MASHINA-MODELI fizik imkoniyati ∪ ADMIN qo'lda bergan tariflar (A2 — tariff grants).
+     * Admin grant mashina defaultini KENGAYTIRADI (masalan oddiy mashinaga KOMFORT/BIZNES berish).
+     */
+    public static Set<String> eligibleTariffs(String carModel, String adminGrants) {
         Set<String> result = new LinkedHashSet<>();
         result.add("STANDART"); // har qanday mashina ekonomni bera oladi
 
-        if (carModel == null || carModel.isBlank()) {
-            return result; // model noma'lum — faqat eng past tarif
+        String m = carModel == null ? "" : carModel.trim().toLowerCase();
+        if (!m.isBlank()) {
+            if (m.contains("damas")) {
+                result.add("DAMAS");
+            }
+
+            // "ev" — ALOHIDA so'z sifatida (masalan "BYD EV", "Kona EV"), substring sifatida EMAS.
+            // Aks holda "chEVrolet" → noto'g'ri ELECTRO bo'lib qoladi (UZ bozorida deyarli barcha mashina Chevrolet).
+            if (containsAny(m,
+                    "tesla", "byd", "ioniq", "kona electric", "leaf", "e-tron", "etron",
+                    "model 3", "model y", "model s", "model x", "id.4", "id4",
+                    "elektr", "electr")
+                    || containsWord(m, "ev")) {
+                result.add("ELECTRO");
+            }
+
+            if (containsAny(m,
+                    "malibu", "captiva", "tracker", "traverse", "equinox", "camry",
+                    "sonata", "k5", "optima", "es ", "lexus", "tahoe", "trailblazer",
+                    "azera", "grandeur")) {
+                result.add("KOMFORT");
+            }
         }
 
-        String m = carModel.trim().toLowerCase();
-
-        if (m.contains("damas")) {
-            result.add("DAMAS");
-        }
-
-        // "ev" — ALOHIDA so'z sifatida (masalan "BYD EV", "Kona EV"), substring sifatida EMAS.
-        // Aks holda "chEVrolet" → noto'g'ri ELECTRO bo'lib qoladi (UZ bozorida deyarli barcha mashina Chevrolet).
-        if (containsAny(m,
-                "tesla", "byd", "ioniq", "kona electric", "leaf", "e-tron", "etron",
-                "model 3", "model y", "model s", "model x", "id.4", "id4",
-                "elektr", "electr")
-                || containsWord(m, "ev")) {
-            result.add("ELECTRO");
-        }
-
-        if (containsAny(m,
-                "malibu", "captiva", "tracker", "traverse", "equinox", "camry",
-                "sonata", "k5", "optima", "es ", "lexus", "tahoe", "trailblazer",
-                "azera", "grandeur")) {
-            result.add("KOMFORT");
+        // A2 — admin tomonidan qo'lda berilgan tariflar (mashina defaultidan tashqari)
+        if (adminGrants != null && !adminGrants.isBlank()) {
+            for (String g : adminGrants.split(",")) {
+                String n = normalize(g);
+                if (!n.isBlank()) result.add(n);
+            }
         }
 
         return result;
@@ -101,7 +114,7 @@ public final class DriverTariffFilter {
         // Damas haydovchisi → {STANDART, DAMAS}, komfort mashina → {STANDART, KOMFORT},
         // elektromobil → {STANDART, ELECTRO}, qolgani → {STANDART}.
         // Buyurtma tarifi shu to'plamda bo'lmasa — mashina mos emas, hech qachon qabul qilinmaydi.
-        if (!eligibleTariffs(driver.getCarModel()).contains(normalizedTariff)) return false;
+        if (!eligibleTariffs(driver.getCarModel(), driver.getTariffGrants()).contains(normalizedTariff)) return false;
 
         // 2-QADAM (haydovchi tanlovi): eligibility ICHIDA toraytirish.
         // accepted_tariffs null/bo'sh → barcha mos tariflarni qabul qiladi.

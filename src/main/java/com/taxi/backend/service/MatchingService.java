@@ -116,6 +116,7 @@ public class MatchingService {
                             driver.getRating() != null ? driver.getRating().doubleValue() : 5.0,
                             driver.getAcceptedTariffs() != null
                                     ? driver.getAcceptedTariffs() : "EKONOM,DAMAS,BIZNES",
+                            driver.getTariffGrants(),
                             driver.getActivityScore(),
                             driver.getFreeSince()
                     );
@@ -247,6 +248,7 @@ public class MatchingService {
             double etaMinutes,
             double rating,
             String acceptedTariffs,
+            String tariffGrants,
             double activityScore,
             LocalDateTime freeSince
     ) {}

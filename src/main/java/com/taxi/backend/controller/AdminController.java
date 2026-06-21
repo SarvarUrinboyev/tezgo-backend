@@ -165,6 +165,30 @@ public class AdminController {
         }
     }
 
+    /** Admin — haydovchiga tarif GRANT berish/olib tashlash (A2). Mashina-modeli defaultini KENGAYTIRADI.
+     *  Body: {"grantedTariffs": ["KOMFORT","BIZNES"]}. Bo'sh/null → barcha grantlar olib tashlanadi. */
+    @PutMapping("/drivers/{id}/tariff-grants")
+    public ResponseEntity<?> adminSetTariffGrants(@PathVariable Long id,
+            @RequestBody Map<String, Object> body) {
+        try {
+            @SuppressWarnings("unchecked")
+            java.util.List<String> granted = (java.util.List<String>) body.get("grantedTariffs");
+            return ResponseEntity.ok(adminService.setDriverTariffGrants(id, granted));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Admin — haydovchining joriy tarif grant holati (car-default vs effektiv) (A2, read-only). */
+    @GetMapping("/drivers/{id}/tariff-grants")
+    public ResponseEntity<?> adminGetTariffGrants(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(adminService.getDriverTariffGrants(id));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     /** Admin — haydovchini qo'lda online/offline qilish */
     @PatchMapping("/drivers/{id}/online-status")
     public ResponseEntity<?> setDriverOnlineStatus(@PathVariable Long id,

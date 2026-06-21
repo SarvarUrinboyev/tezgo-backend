@@ -47,9 +47,9 @@ class TripNotificationHelperBusyTest {
         trip.setTotalPrice(1_000_000L);
 
         var busy = new MatchingService.MatchedDriver(7L, "Band", "Cobalt", "01A777AA",
-                41.30, 69.60, 1.0, 3.0, 5.0, "EKONOM,DAMAS,BIZNES", 0.0, null);
+                41.30, 69.60, 1.0, 3.0, 5.0, "EKONOM,DAMAS,BIZNES", null, 0.0, null);
         var free = new MatchingService.MatchedDriver(8L, "Bo'sh", "Nexia", "01A888BB",
-                41.30, 69.60, 1.2, 4.0, 5.0, "EKONOM,DAMAS,BIZNES", 0.0, null);
+                41.30, 69.60, 1.2, 4.0, 5.0, "EKONOM,DAMAS,BIZNES", null, 0.0, null);
         when(matchingService.findNearbyDrivers(anyDouble(), anyDouble(), anyDouble()))
                 .thenReturn(List.of(busy, free));
         when(tripRepository.findBusyDriverIds(TripStatus.ACTIVE_DRIVER_STATUSES))

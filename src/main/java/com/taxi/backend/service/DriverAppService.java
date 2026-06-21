@@ -79,7 +79,7 @@ public class DriverAppService {
 
         // Mashina modeli FIZIK qaysi tariflarni bera oladi — app shu to'plamdan tanlaydi
         List<String> eligibleTariffs = new ArrayList<>(
-                DriverTariffFilter.eligibleTariffs(driver.getCarModel()));
+                DriverTariffFilter.eligibleTariffs(driver.getCarModel(), driver.getTariffGrants()));
 
         return new DriverProfileResponse(driver.getId(), driver.getId(),
                 user.getName(), user.getPhone(), driver.getDriverCode(),
