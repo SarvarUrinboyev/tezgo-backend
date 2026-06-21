@@ -397,6 +397,64 @@ public class DriverAppService {
                 driver.getTotalTrips(), daily);
     }
 
+    /**
+     * A4 — Haydovchi daromadi chart uchun: kunlik (oxirgi 30 kun), haftalik (oxirgi 12 hafta,
+     * Dushanba boshi), oylik (oxirgi 12 oy). earnings = COMPLETED triplar totalPrice yig'indisi
+     * (tiyin), createdAt bo'yicha. Har bir bucket: {label, trips, earnings}. Bo'sh bucketlar 0 bilan
+     * to'ldiriladi (uzluksiz chart). 12 oylik bitta query — kunlik/haftalik shu oyna ichida.
+     */
+    public Map<String, Object> getEarningsChart(User user) {
+        Driver driver = driverRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
+
+        LocalDate today = LocalDate.now();
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime windowStart = today.minusMonths(11).withDayOfMonth(1).atStartOfDay();
+        List<Trip> trips = tripRepository.findByDriverIdAndStatusAndCreatedAtBetween(
+                driver.getId(), TripStatus.COMPLETED, windowStart, now);
+
+        Map<LocalDate, long[]> dailyMap = new java.util.LinkedHashMap<>();
+        for (int i = 29; i >= 0; i--) dailyMap.put(today.minusDays(i), new long[]{0, 0});
+
+        Map<LocalDate, long[]> weeklyMap = new java.util.LinkedHashMap<>();
+        LocalDate weekStart = today.with(java.time.DayOfWeek.MONDAY);
+        for (int i = 11; i >= 0; i--) weeklyMap.put(weekStart.minusWeeks(i), new long[]{0, 0});
+
+        Map<java.time.YearMonth, long[]> monthlyMap = new java.util.LinkedHashMap<>();
+        java.time.YearMonth thisMonth = java.time.YearMonth.from(today);
+        for (int i = 11; i >= 0; i--) monthlyMap.put(thisMonth.minusMonths(i), new long[]{0, 0});
+
+        for (Trip t : trips) {
+            long price = t.getTotalPrice() != null ? t.getTotalPrice() : 0L;
+            LocalDate d = t.getCreatedAt().toLocalDate();
+            long[] day = dailyMap.get(d);
+            if (day != null) { day[0]++; day[1] += price; }
+            long[] wk = weeklyMap.get(d.with(java.time.DayOfWeek.MONDAY));
+            if (wk != null) { wk[0]++; wk[1] += price; }
+            long[] mo = monthlyMap.get(java.time.YearMonth.from(d));
+            if (mo != null) { mo[0]++; mo[1] += price; }
+        }
+
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("daily", earningsBuckets(dailyMap, java.time.LocalDate::toString));
+        result.put("weekly", earningsBuckets(weeklyMap, java.time.LocalDate::toString));
+        result.put("monthly", earningsBuckets(monthlyMap, java.time.YearMonth::toString));
+        return result;
+    }
+
+    private <K> List<Map<String, Object>> earningsBuckets(Map<K, long[]> map,
+            java.util.function.Function<K, String> label) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map.Entry<K, long[]> e : map.entrySet()) {
+            Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("label", label.apply(e.getKey()));
+            m.put("trips", e.getValue()[0]);
+            m.put("earnings", e.getValue()[1]);
+            out.add(m);
+        }
+        return out;
+    }
+
     /** Rasmlar ro'yxati */
     public List<Map<String, Object>> getPhotos(User user) {
         Driver driver = driverRepository.findByUserId(user.getId())

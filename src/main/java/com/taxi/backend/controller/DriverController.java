@@ -292,6 +292,16 @@ public class DriverController {
         return ResponseEntity.ok(driverService.getStats(user));
     }
 
+    /** A4 — Daromad statistikasi: kunlik(oxirgi 30)/haftalik(12)/oylik(12) bucketlar — chart uchun. */
+    @GetMapping("/earnings/chart")
+    public ResponseEntity<?> earningsChart(@AuthenticationPrincipal User user) {
+        try {
+            return ResponseEntity.ok(driverService.getEarningsChart(user));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     @GetMapping("/photos")
     public ResponseEntity<?> getPhotos(@AuthenticationPrincipal User user) {
         return ResponseEntity.ok(driverService.getPhotos(user));
