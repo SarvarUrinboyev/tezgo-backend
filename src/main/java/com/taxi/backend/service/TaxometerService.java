@@ -144,6 +144,14 @@ public class TaxometerService {
             throw new RuntimeException("Masofa 0 dan katta bo'lishi kerak");
         }
 
+        // A5 — agar taxometer PAUZADA yakunlansa, ochiq kutish davrini ham waitingPrice ga qo'shamiz.
+        if (trip.getWaitingStartedAt() != null) {
+            LocalDateTime nowFinish = LocalDateTime.now();
+            accrueWaiting(trip, nowFinish);
+            trip.setWaitingStartedAt(null);
+            trip.setWaitingEndedAt(nowFinish);
+        }
+
         // Taxometr bazaviy tarifi — mijoz ilovasi taxometr uchun ko'rsatadigan "Start" tarif
         // (DB nomi STANDART: base 7500 + 2500/km). Tariflar qayta nomlangan — "EKONOM" qatori YO'Q,
         // shuning uchun hardcode "EKONOM" 400 ("EKONOM tarifi topilmadi") berardi. Nom o'zgarishiga
@@ -226,5 +234,71 @@ public class TaxometerService {
                     m.put("active", false);
                     return m;
                 });
+    }
+
+    // ─── A5: Taxometer PAUZA / DAVOM (kutish haqi) ──────────────────────────
+
+    /** Taxometerni PAUZA qiladi — kutish davri boshlanadi (waitingStartedAt). Idempotent. */
+    @Transactional
+    public Map<String, Object> pause(User user, Long tripId) {
+        Trip trip = requireActiveTaximeter(user, tripId);
+        if (trip.getWaitingStartedAt() == null) {
+            trip.setWaitingStartedAt(LocalDateTime.now());
+            trip.setWaitingEndedAt(null);
+            tripRepository.save(trip);
+        }
+        return waitingState(trip);
+    }
+
+    /** Taxometerni DAVOM ettiradi — joriy ochiq kutish davri waitingPrice ga QO'SHILADI. Idempotent. */
+    @Transactional
+    public Map<String, Object> resume(User user, Long tripId) {
+        Trip trip = requireActiveTaximeter(user, tripId);
+        long added = 0L;
+        if (trip.getWaitingStartedAt() != null) {
+            LocalDateTime now = LocalDateTime.now();
+            added = accrueWaiting(trip, now);
+            trip.setWaitingStartedAt(null);
+            trip.setWaitingEndedAt(now);
+            tripRepository.save(trip);
+        }
+        Map<String, Object> m = waitingState(trip);
+        m.put("addedTiyin", added);
+        return m;
+    }
+
+    /** Ochiq kutish davrini (waitingStartedAt..now) finish() bilan BIR XIL formula bo'yicha hisoblab
+     *  waitingPrice ga qo'shadi (free-seconds har pauzaga). Qo'shilgan tiyinni qaytaradi. */
+    private long accrueWaiting(Trip trip, LocalDateTime now) {
+        if (trip.getWaitingStartedAt() == null) return 0L;
+        long waitingSeconds = java.time.Duration.between(trip.getWaitingStartedAt(), now).getSeconds();
+        long billableSeconds = Math.max(0, waitingSeconds - waitingFreeSeconds);
+        long cost = Math.round(billableSeconds * waitingPricePerMinute / 60.0);
+        long prev = trip.getWaitingPrice() != null ? trip.getWaitingPrice() : 0L;
+        trip.setWaitingPrice(prev + cost);
+        return cost;
+    }
+
+    private Trip requireActiveTaximeter(User user, Long tripId) {
+        Driver driver = driverRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
+        Trip trip = tripRepository.findById(tripId)
+                .orElseThrow(() -> new RuntimeException("Buyurtma topilmadi"));
+        if (trip.getDriver() == null || !trip.getDriver().getId().equals(driver.getId()))
+            throw new RuntimeException("Bu sizning taxometringiz emas");
+        if (!"TAXOMETER".equals(trip.getSource()) && !"CALL_TAXOMETER".equals(trip.getSource()))
+            throw new RuntimeException("Bu taxometer sayohati emas");
+        if (trip.getStatus() != TripStatus.STARTED)
+            throw new RuntimeException("Taxometer faol emas");
+        return trip;
+    }
+
+    private Map<String, Object> waitingState(Trip trip) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("tripId", trip.getId());
+        m.put("paused", trip.getWaitingStartedAt() != null);
+        m.put("waitingStartedAt", trip.getWaitingStartedAt() != null ? trip.getWaitingStartedAt().toString() : null);
+        m.put("waitingFeeTiyin", trip.getWaitingPrice() != null ? trip.getWaitingPrice() : 0L);
+        return m;
     }
 }

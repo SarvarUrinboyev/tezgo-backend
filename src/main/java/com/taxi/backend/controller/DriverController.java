@@ -356,6 +356,30 @@ public class DriverController {
         }
     }
 
+    /** A5 — Taxometerni PAUZA qilish (kutish boshlanadi). Body: {tripId}. */
+    @PostMapping("/taxometer/pause")
+    public ResponseEntity<?> taxometerPause(@AuthenticationPrincipal User user,
+            @RequestBody Map<String, Object> body) {
+        try {
+            Long tripId = ((Number) body.get("tripId")).longValue();
+            return ResponseEntity.ok(taxometerService.pause(user, tripId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** A5 — Taxometerni DAVOM ettirish (kutish yakunlanadi, waitingFee ga qo'shiladi). Body: {tripId}. */
+    @PostMapping("/taxometer/resume")
+    public ResponseEntity<?> taxometerResume(@AuthenticationPrincipal User user,
+            @RequestBody Map<String, Object> body) {
+        try {
+            Long tripId = ((Number) body.get("tripId")).longValue();
+            return ResponseEntity.ok(taxometerService.resume(user, tripId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     @Operation(summary = "Faol taxometrni olish (restart recovery)")
     @GetMapping("/taxometer/active")
     public ResponseEntity<?> taxometerActive(@AuthenticationPrincipal User user) {
