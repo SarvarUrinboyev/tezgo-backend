@@ -51,8 +51,10 @@ class DriverDocumentsTest {
         assertEquals("1990-01-15", r.get("birthDate"));
         @SuppressWarnings("unchecked")
         Map<String, Object> images = (Map<String, Object>) r.get("images");
-        assertTrue(images.containsKey("idFront") && images.containsKey("idBack") && images.containsKey("passport"));
+        assertTrue(images.containsKey("idFront") && images.containsKey("idBack")
+                && images.containsKey("passport") && images.containsKey("selfie"));
         assertNull(images.get("passport"));
+        assertNull(images.get("selfie"));
     }
 
     @Test

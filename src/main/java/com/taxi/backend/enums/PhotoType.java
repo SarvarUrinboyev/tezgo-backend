@@ -23,5 +23,8 @@ public enum PhotoType {
     // A6 — Haydovchi hujjat rasmlari: ID karta old/orqa, passport (bitta varaq)
     ID_FRONT,
     ID_BACK,
-    PASSPORT
+    PASSPORT,
+
+    // Deploy 3 (A1) — selfie (shaxsni tasdiqlash); UI: 2 element = Passport + Selfie
+    SELFIE
 }

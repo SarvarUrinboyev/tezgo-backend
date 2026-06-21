@@ -478,6 +478,7 @@ public class DriverAppService {
         images.put("idFront", documentPhotoUrl(driver.getId(), com.taxi.backend.enums.PhotoType.ID_FRONT));
         images.put("idBack", documentPhotoUrl(driver.getId(), com.taxi.backend.enums.PhotoType.ID_BACK));
         images.put("passport", documentPhotoUrl(driver.getId(), com.taxi.backend.enums.PhotoType.PASSPORT));
+        images.put("selfie", documentPhotoUrl(driver.getId(), com.taxi.backend.enums.PhotoType.SELFIE));
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("passportSeries", driver.getPassportSeries());
         result.put("passportNumber", driver.getPassportNumber());
