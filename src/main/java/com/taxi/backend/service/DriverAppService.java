@@ -455,6 +455,43 @@ public class DriverAppService {
         return out;
     }
 
+    /** A6 — Haydovchi hujjat ma'lumotlari (passport seriya/raqam, tug'ilgan sana) saqlash. */
+    public Map<String, Object> saveDriverDocuments(User user, String passportSeries,
+            String passportNumber, String birthDate) {
+        Driver driver = driverRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
+        if (passportSeries != null && !passportSeries.isBlank())
+            driver.setPassportSeries(passportSeries.trim().toUpperCase());
+        if (passportNumber != null && !passportNumber.isBlank())
+            driver.setPassportNumber(passportNumber.trim());
+        if (birthDate != null && !birthDate.isBlank())
+            driver.setBirthDate(birthDate.trim());
+        driverRepository.save(driver);
+        return getDriverDocuments(user);
+    }
+
+    /** A6 — Haydovchi hujjatlari (passport + tug'ilgan sana + hujjat rasm URL'lari) — ko'rsatish uchun. */
+    public Map<String, Object> getDriverDocuments(User user) {
+        Driver driver = driverRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
+        Map<String, Object> images = new java.util.LinkedHashMap<>();
+        images.put("idFront", documentPhotoUrl(driver.getId(), com.taxi.backend.enums.PhotoType.ID_FRONT));
+        images.put("idBack", documentPhotoUrl(driver.getId(), com.taxi.backend.enums.PhotoType.ID_BACK));
+        images.put("passport", documentPhotoUrl(driver.getId(), com.taxi.backend.enums.PhotoType.PASSPORT));
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("passportSeries", driver.getPassportSeries());
+        result.put("passportNumber", driver.getPassportNumber());
+        result.put("birthDate", driver.getBirthDate());
+        result.put("images", images);
+        return result;
+    }
+
+    private String documentPhotoUrl(Long driverId, com.taxi.backend.enums.PhotoType type) {
+        return driverPhotoRepository.findByDriverIdAndPhotoType(driverId, type)
+                .map(com.taxi.backend.model.DriverPhoto::getPhotoUrl)
+                .orElse(null);
+    }
+
     /** Rasmlar ro'yxati */
     public List<Map<String, Object>> getPhotos(User user) {
         Driver driver = driverRepository.findByUserId(user.getId())

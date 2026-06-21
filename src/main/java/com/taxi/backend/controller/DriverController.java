@@ -307,6 +307,31 @@ public class DriverController {
         return ResponseEntity.ok(driverService.getPhotos(user));
     }
 
+    /** A6 — Haydovchi hujjatlari (passport seriya/raqam + tug'ilgan sana) saqlash. Rasm yuklash:
+     *  mavjud POST /api/driver/photos/upload (photoType=ID_FRONT|ID_BACK|PASSPORT). */
+    @PutMapping("/documents")
+    public ResponseEntity<?> saveDocuments(@AuthenticationPrincipal User user,
+            @RequestBody Map<String, Object> body) {
+        try {
+            String passportSeries = body.get("passportSeries") != null ? body.get("passportSeries").toString() : null;
+            String passportNumber = body.get("passportNumber") != null ? body.get("passportNumber").toString() : null;
+            String birthDate = body.get("birthDate") != null ? body.get("birthDate").toString() : null;
+            return ResponseEntity.ok(driverService.saveDriverDocuments(user, passportSeries, passportNumber, birthDate));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** A6 — Haydovchi hujjatlari (ko'rsatish): passport + tug'ilgan sana + hujjat rasm URL'lari. */
+    @GetMapping("/documents")
+    public ResponseEntity<?> getDocuments(@AuthenticationPrincipal User user) {
+        try {
+            return ResponseEntity.ok(driverService.getDriverDocuments(user));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     /** Expo push token saqlash */
     @PostMapping("/push-token")
     public ResponseEntity<?> savePushToken(@AuthenticationPrincipal User user,

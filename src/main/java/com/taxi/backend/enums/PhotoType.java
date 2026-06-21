@@ -18,5 +18,10 @@ public enum PhotoType {
     CAR_FRONT,
     CAR_SIDE,
     CAR_INTERIOR,
-    TECH_PASSPORT
+    TECH_PASSPORT,
+
+    // A6 — Haydovchi hujjat rasmlari: ID karta old/orqa, passport (bitta varaq)
+    ID_FRONT,
+    ID_BACK,
+    PASSPORT
 }
