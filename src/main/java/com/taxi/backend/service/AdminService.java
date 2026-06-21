@@ -1,0 +1,665 @@
+package com.taxi.backend.service;
+
+import com.taxi.backend.dto.response.*;
+import com.taxi.backend.enums.DriverStatus;
+import com.taxi.backend.enums.PhotoStatus;
+import com.taxi.backend.enums.TransactionType;
+import com.taxi.backend.enums.TripStatus;
+import com.taxi.backend.exception.ConflictException;
+import com.taxi.backend.model.*;
+import com.taxi.backend.model.Trip;
+import com.taxi.backend.repository.*;
+import com.taxi.backend.repository.DriverServiceRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+@Service
+public class AdminService {
+
+    private final DriverRepository driverRepository;
+    private final DriverPhotoRepository driverPhotoRepository;
+    private final DriverServiceRepository driverServiceRepository;
+    private final TripRepository tripRepository;
+    private final BroadcastMessageRepository broadcastMessageRepository;
+    private final UserRepository userRepository;
+    private final SimpMessagingTemplate messagingTemplate;
+    private final RatingRepository ratingRepository;
+    private final TransactionRepository transactionRepository;
+    private final ChatService chatService;
+
+    public AdminService(DriverRepository driverRepository,
+            DriverPhotoRepository driverPhotoRepository,
+            DriverServiceRepository driverServiceRepository,
+            TripRepository tripRepository,
+            BroadcastMessageRepository broadcastMessageRepository,
+            UserRepository userRepository,
+            SimpMessagingTemplate messagingTemplate,
+            RatingRepository ratingRepository,
+            TransactionRepository transactionRepository,
+            ChatService chatService) {
+        this.driverRepository = driverRepository;
+        this.driverPhotoRepository = driverPhotoRepository;
+        this.driverServiceRepository = driverServiceRepository;
+        this.tripRepository = tripRepository;
+        this.broadcastMessageRepository = broadcastMessageRepository;
+        this.userRepository = userRepository;
+        this.messagingTemplate = messagingTemplate;
+        this.ratingRepository = ratingRepository;
+        this.transactionRepository = transactionRepository;
+        this.chatService = chatService;
+    }
+
+    /** Dashboard statistika */
+    public DashboardStatsResponse getDashboardStats() {
+        LocalDateTime todayStart = LocalDateTime.now().toLocalDate().atStartOfDay();
+
+        long totalDrivers = driverRepository.count();
+        long activeDrivers = driverRepository.countByStatus(DriverStatus.ACTIVE);
+        long pendingDrivers = driverRepository.countByStatus(DriverStatus.PENDING);
+        long onlineDrivers = driverRepository.countByIsOnlineTrue();
+
+        long totalTrips = tripRepository.count();
+        long todayTrips = tripRepository.countByStatusAndCreatedAtAfter(TripStatus.COMPLETED, todayStart);
+        long searchingTrips = tripRepository.countByStatus(TripStatus.SEARCHING);
+
+        Long todayRevenue = tripRepository.sumRevenueAfter(todayStart);
+
+        return new DashboardStatsResponse(
+                totalDrivers, activeDrivers, pendingDrivers, onlineDrivers,
+                totalTrips, todayTrips, searchingTrips,
+                (todayRevenue != null ? todayRevenue : 0) / 100);
+    }
+
+    /** Haydovchilar ro'yxati — status bo'yicha filter bilan */
+    public Page<DriverListResponse> getDrivers(String status, Pageable pageable) {
+        Page<Driver> drivers;
+        if (status != null && !status.isEmpty()) {
+            try {
+                DriverStatus driverStatus = DriverStatus.valueOf(status.toUpperCase());
+                drivers = driverRepository.findByStatusWithUser(driverStatus, pageable);
+            } catch (IllegalArgumentException e) {
+                // Noto'g'ri status — barcha haydovchilarni qaytarish
+                drivers = driverRepository.findAllWithUser(pageable);
+            }
+        } else {
+            drivers = driverRepository.findAllWithUser(pageable);
+        }
+
+        return drivers.map(d -> new DriverListResponse(
+                d.getId(), d.getUser().getName(), d.getUser().getPhone(), d.getDriverCode(),
+                d.getCarModel(), d.getCarNumber(), d.getStatus().name(),
+                d.isOnline(), d.getRating(), d.getTotalTrips(), d.getBalance() / 100,
+                d.getCarColor(), d.getCarYear(), d.getPassportSeries(), d.getPassportNumber(),
+                d.getBirthDate(), d.getAddress(), d.getTechPassportNumber(), d.getAcceptedTariffs(),
+                d.getVerifiedAt() != null ? d.getVerifiedAt().toString() : null,
+                d.getActivityScore(), d.getLatitude(), d.getLongitude(),
+                d.getUser().getCreatedAt() != null ? d.getUser().getCreatedAt().toString() : null,
+                d.getUser().getAvatarUrl()));
+    }
+
+    /** Haydovchini tasdiqlash */
+    @Transactional
+    public Map<String, Object> approveDriver(Long driverId, User admin) {
+        Driver driver = driverRepository.findById(driverId)
+                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
+        driver.setStatus(DriverStatus.ACTIVE);
+        driver.setVerifiedAt(LocalDateTime.now());
+        driverRepository.save(driver);
+
+        // Haydovchiga xabar
+        messagingTemplate.convertAndSend("/topic/driver/" + driverId,
+                Map.of("type", "APPROVED", "message", "Tabriklaymiz! Siz tasdiqlangansiz 🎉"));
+
+        return Map.of("message", "Haydovchi tasdiqlandi", "driverId", driverId);
+    }
+
+    /** Haydovchini o'chirish — barcha bog'liq ma'lumotlar bilan */
+    @Transactional
+    public void deleteDriver(Long driverId) {
+        Driver driver = driverRepository.findById(driverId)
+                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
+        Long userId = driver.getUser().getId();
+
+        // 1. Trip'lardagi driver FK → null
+        tripRepository.nullifyDriver(driverId);
+
+        // 2. Driver user ID bo'yicha boshqa FK lar → null (passenger, reviewedBy, fromUser)
+        userRepository.nullifyPassengerInTrips(userId);
+        userRepository.nullifyReviewedByInPhotos(userId);
+        userRepository.nullifyFromUserInRatings(userId);
+
+        // 3. Reyting/baholarni o'chirish (toDriver = this driver)
+        ratingRepository.deleteAll(ratingRepository.findByToDriverId(driverId));
+
+        // 4. Tranzaksiyalarni o'chirish
+        transactionRepository.deleteAll(transactionRepository.findByDriverId(driverId));
+
+        // 5. Xizmatlar (DriverService) o'chirish
+        driverServiceRepository.deleteAll(driverServiceRepository.findByDriverId(driverId));
+
+        // 6. Rasmlarni o'chirish
+        driverPhotoRepository.deleteAll(driverPhotoRepository.findByDriverId(driverId));
+
+        // 7. Driver record o'chirish
+        driverRepository.deleteById(driverId);
+
+        // 8. User o'chirish
+        userRepository.deleteById(userId);
+    }
+
+    /** Haydovchini bloklash */
+    @Transactional
+    public Map<String, Object> blockDriver(Long driverId, String reason) {
+        Driver driver = driverRepository.findById(driverId)
+                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
+        driver.setStatus(DriverStatus.BLOCKED);
+        driver.setOnline(false);
+        driverRepository.save(driver);
+
+        messagingTemplate.convertAndSend("/topic/driver/" + driverId,
+                Map.of("type", "BLOCKED", "message", "Hisobingiz bloklandi: " + reason));
+
+        return Map.of("message", "Haydovchi bloklandi");
+    }
+
+    /** Haydovchi rasmlari */
+    public List<Map<String, Object>> getDriverPhotos(Long driverId) {
+        return driverPhotoRepository.findByDriverId(driverId).stream().map(p -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", p.getId());
+            m.put("type", p.getPhotoType().name());
+            m.put("status", p.getStatus().name());
+            m.put("photoUrl", p.getPhotoUrl());
+            m.put("rejectReason", p.getRejectReason());
+            return m;
+        }).collect(Collectors.toList());
+    }
+
+    /** Rasmni tasdiqlash */
+    @Transactional
+    public Map<String, Object> approvePhoto(Long photoId, User admin) {
+        DriverPhoto photo = driverPhotoRepository.findById(photoId)
+                .orElseThrow(() -> new RuntimeException("Rasm topilmadi"));
+        photo.setStatus(PhotoStatus.APPROVED);
+        photo.setReviewedAt(LocalDateTime.now());
+        photo.setReviewedBy(admin);
+        driverPhotoRepository.save(photo);
+        return Map.of("message", "Rasm tasdiqlandi");
+    }
+
+    /** Rasmni rad etish */
+    @Transactional
+    public Map<String, Object> rejectPhoto(Long photoId, String reason, User admin) {
+        DriverPhoto photo = driverPhotoRepository.findById(photoId)
+                .orElseThrow(() -> new RuntimeException("Rasm topilmadi"));
+        photo.setStatus(PhotoStatus.REJECTED);
+        photo.setRejectReason(reason);
+        photo.setReviewedAt(LocalDateTime.now());
+        photo.setReviewedBy(admin);
+        driverPhotoRepository.save(photo);
+        return Map.of("message", "Rasm rad etildi");
+    }
+
+    /** Broadcast xabar yuborish */
+    @Transactional
+    public Map<String, Object> sendBroadcast(String title, String content, String target, User admin) {
+        BroadcastMessage msg = new BroadcastMessage();
+        msg.setTitle(title);
+        msg.setContent(content);
+        msg.setTarget(target);
+        msg.setSentBy(admin);
+        broadcastMessageRepository.save(msg);
+
+        // WebSocket orqali online haydovchilarga yuborish
+        messagingTemplate.convertAndSend("/topic/broadcast",
+                Map.of("title", title != null ? title : "", "content", content, "sentAt", msg.getSentAt().toString()));
+
+        return Map.of("message", "Xabar yuborildi", "id", msg.getId());
+    }
+
+    /** Barcha buyurtmalar (source filter: null = barchasi) */
+    @Transactional(readOnly = true)
+    public Page<Map<String, Object>> getAllTrips(Pageable pageable, String sourceFilter) {
+        Page<com.taxi.backend.model.Trip> page = (sourceFilter != null && !sourceFilter.isBlank())
+                ? tripRepository.findBySource(sourceFilter, pageable)
+                : tripRepository.findAll(pageable);
+        return page.map(t -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", t.getId());
+            
+            try {
+                m.put("passengerId", t.getPassenger() != null ? t.getPassenger().getId() : null);
+                m.put("passengerName", t.getPassenger() != null ? t.getPassenger().getName() : "—");
+            } catch (Exception e) {
+                m.put("passengerId", null);
+                m.put("passengerName", "Noma'lum");
+            }
+
+            try {
+                m.put("driverName", t.getDriver() != null && t.getDriver().getUser() != null ? t.getDriver().getUser().getName() : "—");
+            } catch (Exception e) {
+                m.put("driverName", "Noma'lum");
+            }
+
+            m.put("fromAddress", t.getFromAddress());
+            m.put("toAddress", t.getToAddress());
+            m.put("status", t.getStatus().name());
+            m.put("source", t.getSource());
+            m.put("totalPrice", t.getTotalPrice() != null ? t.getTotalPrice() / 100 : 0);
+            m.put("createdAt", t.getCreatedAt().toString());
+            return m;
+        });
+    }
+
+    /** Bitta buyurtma batafsil */
+    @Transactional(readOnly = true)
+    public Map<String, Object> getTripDetail(Long tripId) {
+        Trip t = tripRepository.findById(tripId)
+                .orElseThrow(() -> new RuntimeException("Buyurtma topilmadi"));
+        Map<String, Object> m = new HashMap<>();
+        m.put("id", t.getId());
+        m.put("status", t.getStatus().name());
+        m.put("fromAddress", t.getFromAddress());
+        m.put("toAddress", t.getToAddress());
+        m.put("fromLat", t.getFromLat());
+        m.put("fromLon", t.getFromLon());
+        m.put("toLat", t.getToLat());
+        m.put("toLon", t.getToLon());
+        m.put("distanceKm", t.getDistanceKm());
+        m.put("durationMin", t.getDurationMin());
+        m.put("basePrice", t.getBasePrice() != null ? t.getBasePrice() / 100 : 0);
+        m.put("extraPrice", t.getExtraPrice() != null ? t.getExtraPrice() / 100 : 0);
+        m.put("totalPrice", t.getTotalPrice() != null ? t.getTotalPrice() / 100 : 0);
+        m.put("waitingPrice", t.getWaitingPrice() != null ? t.getWaitingPrice() / 100 : 0);
+        m.put("cancelReason", t.getCancelReason());
+        m.put("source", t.getSource());
+        m.put("createdAt", t.getCreatedAt() != null ? t.getCreatedAt().toString() : null);
+        m.put("acceptedAt", t.getAcceptedAt() != null ? t.getAcceptedAt().toString() : null);
+        m.put("startedAt", t.getStartedAt() != null ? t.getStartedAt().toString() : null);
+        m.put("completedAt", t.getCompletedAt() != null ? t.getCompletedAt().toString() : null);
+        m.put("waitingStartedAt", t.getWaitingStartedAt() != null ? t.getWaitingStartedAt().toString() : null);
+        m.put("waitingEndedAt", t.getWaitingEndedAt() != null ? t.getWaitingEndedAt().toString() : null);
+        // Yo'lovchi
+        try {
+            m.put("passengerId", t.getPassenger() != null ? t.getPassenger().getId() : null);
+            m.put("passengerName", t.getPassenger() != null ? t.getPassenger().getName() : "—");
+            m.put("passengerPhone", t.getPassenger() != null ? t.getPassenger().getPhone() : "—");
+        } catch (Exception e) {
+            m.put("passengerId", null); m.put("passengerName", "Noma'lum"); m.put("passengerPhone", "—");
+        }
+        // Haydovchi
+        try {
+            if (t.getDriver() != null) {
+                m.put("driverId", t.getDriver().getId());
+                m.put("driverName", t.getDriver().getUser() != null ? t.getDriver().getUser().getName() : "—");
+                m.put("driverPhone", t.getDriver().getUser() != null ? t.getDriver().getUser().getPhone() : "—");
+                m.put("carModel", t.getDriver().getCarModel());
+                m.put("carNumber", t.getDriver().getCarNumber());
+                m.put("driverRating", t.getDriver().getRating());
+            } else {
+                m.put("driverId", null); m.put("driverName", "—"); m.put("driverPhone", "—");
+                m.put("carModel", null); m.put("carNumber", null); m.put("driverRating", null);
+            }
+        } catch (Exception e) {
+            m.put("driverId", null); m.put("driverName", "Noma'lum"); m.put("driverPhone", "—");
+        }
+        // Tarif
+        try {
+            m.put("tariffName", t.getTariff() != null ? t.getTariff().getName() : null);
+        } catch (Exception e) { m.put("tariffName", null); }
+        // Yo'lovchi bahosi (rating)
+        try {
+            ratingRepository.findByTripId(tripId).ifPresentOrElse(r -> {
+                m.put("ratingScore", r.getScore());
+                m.put("ratingComment", r.getComment());
+                m.put("ratingDate", r.getCreatedAt() != null ? r.getCreatedAt().toString() : null);
+            }, () -> {
+                m.put("ratingScore", null);
+                m.put("ratingComment", null);
+                m.put("ratingDate", null);
+            });
+        } catch (Exception e) {
+            m.put("ratingScore", null); m.put("ratingComment", null); m.put("ratingDate", null);
+        }
+        return m;
+    }
+
+    /** Trip chat tarixini admin uchun olish (Redis + in-memory) */
+    public List<Map<String, Object>> getTripChat(Long tripId) {
+        return chatService.getMessages(tripId, 200);
+    }
+
+    /** Admin — istalgan faol buyurtmani bekor qilish */
+    @Transactional
+    public Map<String, Object> adminCancelTrip(Long tripId, String reason) {
+        Trip trip = tripRepository.findById(tripId)
+                .orElseThrow(() -> new RuntimeException("Buyurtma topilmadi"));
+
+        List<TripStatus> cancellable = List.of(
+                TripStatus.SEARCHING, TripStatus.ACCEPTED, TripStatus.DRIVER_ARRIVED, TripStatus.STARTED);
+        if (!cancellable.contains(trip.getStatus())) {
+            throw new RuntimeException("Bu statusdagi buyurtmani bekor qilib bo'lmaydi: " + trip.getStatus().name());
+        }
+
+        if (trip.getDriver() != null) {
+            Driver driver = trip.getDriver();
+            driver.setOnline(true);
+            driverRepository.save(driver);
+        }
+
+        trip.setStatus(TripStatus.CANCELLED_BY_ADMIN);
+        trip.setCancelReason(reason.trim());
+        tripRepository.save(trip);
+
+        java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("tripId", tripId);
+        result.put("status", "CANCELLED_BY_ADMIN");
+        result.put("cancelReason", reason.trim());
+        result.put("message", "Buyurtma muvaffaqiyatli bekor qilindi");
+        return result;
+    }
+
+    /** Barcha sharhlar (Ratings) */
+    @Transactional(readOnly = true)
+    public Page<RatingResponse> getAllRatings(Pageable pageable) {
+        return ratingRepository.findAll(pageable).map(r -> {
+            String passengerName;
+            try { passengerName = r.getFromUser() != null ? r.getFromUser().getName() : "—"; }
+            catch (Exception e) { passengerName = "Noma'lum"; }
+            String driverName;
+            try {
+                Driver d = r.getToDriver();
+                driverName = (d != null && d.getUser() != null) ? d.getUser().getName() : "—";
+            } catch (Exception e) { driverName = "Noma'lum"; }
+            Long tripId;
+            try { tripId = r.getTrip() != null ? r.getTrip().getId() : null; }
+            catch (Exception e) { tripId = null; }
+            return new RatingResponse(r.getId(), r.getScore(), r.getComment(),
+                    r.getCreatedAt().toString(), passengerName, driverName, tripId);
+        });
+    }
+
+    /** Yo'lovchilar ro'yxati — faqat PASSENGER roli */
+    @Transactional(readOnly = true)
+    public Page<PassengerListResponse> getPassengers(Pageable pageable) {
+        return userRepository.findByRole(com.taxi.backend.enums.Role.PASSENGER, pageable).map(u -> {
+            long trips = tripRepository.countByPassengerId(u.getId());
+            Long spent = tripRepository.sumSpentByPassenger(u.getId());
+            return new PassengerListResponse(u.getId(), u.getName(), u.getPhone(),
+                    u.isActive(), u.getRole() != null ? u.getRole().name() : "",
+                    trips, spent != null ? spent / 100 : 0);
+        });
+    }
+
+    /** Yo'lovchini o'chirish — barcha bog'liq ma'lumotlar bilan */
+    @Transactional
+    public void deletePassenger(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Foydalanuvchi topilmadi"));
+
+        // 1. Trip'lardagi passenger FK → null
+        userRepository.nullifyPassengerInTrips(userId);
+
+        // 2. Rating'lardagi fromUser FK → null
+        userRepository.nullifyFromUserInRatings(userId);
+
+        // 3. User o'chirish
+        userRepository.deleteById(userId);
+    }
+
+    /** Yo'lovchini bloklash */
+    @Transactional
+    public Map<String, Object> blockPassenger(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("Foydalanuvchi topilmadi"));
+        user.setActive(false);
+        userRepository.save(user);
+        return Map.of("message", "Foydalanuvchi bloklandi");
+    }
+
+    /** Liniyada (ACTIVE + online) haydovchilar soni */
+    public long getLiniyadaCount() {
+        return driverRepository.countByIsOnlineTrueAndStatusACTIVE();
+    }
+
+    /** Online haydovchilar joylashuvi (admin xaritasi) */
+    @Transactional(readOnly = true)
+    public List<OnlineDriverResponse> getOnlineDriversForMap() {
+        return driverRepository.findActiveOnlineDrivers().stream().map(d -> {
+            String name, phone;
+            try {
+                name = d.getUser() != null ? d.getUser().getName() : "";
+                phone = d.getUser() != null ? d.getUser().getPhone() : "";
+            } catch (Exception e) {
+                name = "";
+                phone = "";
+            }
+            String avatarUrl;
+            try {
+                avatarUrl = driverPhotoRepository.findByDriverIdAndPhotoType(
+                    d.getId(), com.taxi.backend.enums.PhotoType.DRIVER_FACE
+                ).map(photo -> photo.getPhotoUrl()).orElse(null);
+            } catch (Exception e) {
+                avatarUrl = null;
+            }
+            return new OnlineDriverResponse(d.getId(),
+                    d.getLatitude() != null ? d.getLatitude() : 0.0,
+                    d.getLongitude() != null ? d.getLongitude() : 0.0,
+                    d.getCarModel(), d.getCarNumber(), d.getRating(), d.getCarColor(),
+                    d.getStatus() != null ? d.getStatus().name() : "",
+                    d.getTotalTrips(), name, phone, d.getDriverCode(), avatarUrl);
+        }).collect(Collectors.toList());
+    }
+
+    /** Haydovchi kodi bo'yicha qidiruv */
+    @Transactional(readOnly = true)
+    public Map<String, Object> getDriverByCode(String code) {
+        Driver driver = driverRepository.findByDriverCode(code.toUpperCase())
+                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi: " + code));
+        Map<String, Object> m = new HashMap<>();
+        m.put("id", driver.getId());
+        m.put("driverCode", driver.getDriverCode());
+        m.put("name", driver.getUser() != null ? driver.getUser().getName() : "");
+        m.put("phone", driver.getUser() != null ? driver.getUser().getPhone() : "");
+        m.put("status", driver.getStatus() != null ? driver.getStatus().name() : "");
+        m.put("isOnline", driver.isOnline());
+        m.put("rating", driver.getRating());
+        m.put("totalTrips", driver.getTotalTrips());
+        m.put("balance", driver.getBalance() / 100);
+        m.put("carModel", driver.getCarModel());
+        m.put("carNumber", driver.getCarNumber());
+        m.put("carColor", driver.getCarColor());
+        m.put("carYear", driver.getCarYear());
+        return m;
+    }
+
+    /** Qidiruv — ism, telefon yoki driver_code bo'yicha */
+    public Page<DriverListResponse> searchDrivers(String q, Pageable pageable) {
+        return driverRepository.searchByNameOrPhoneOrCode(q, pageable).map(d ->
+                new DriverListResponse(
+                        d.getId(), d.getUser().getName(), d.getUser().getPhone(), d.getDriverCode(),
+                        d.getCarModel(), d.getCarNumber(), d.getStatus().name(),
+                        d.isOnline(), d.getRating(), d.getTotalTrips(), d.getBalance() / 100,
+                        d.getCarColor(), d.getCarYear(), d.getPassportSeries(), d.getPassportNumber(),
+                        d.getBirthDate(), d.getAddress(), d.getTechPassportNumber(), d.getAcceptedTariffs(),
+                        d.getVerifiedAt() != null ? d.getVerifiedAt().toString() : null,
+                        d.getActivityScore(), d.getLatitude(), d.getLongitude(),
+                        d.getUser().getCreatedAt() != null ? d.getUser().getCreatedAt().toString() : null,
+                        d.getUser().getAvatarUrl()));
+    }
+
+    /** Admin tomonidan haydovchi balansini to'ldirish */
+    @Transactional
+    public Map<String, Object> adminTopupBalance(Long driverId, Long amountUzs, String paymentMethod) {
+        if (amountUzs == null || amountUzs <= 0) throw new RuntimeException("Miqdor musbat bo'lishi kerak");
+        Driver driver = driverRepository.findById(driverId)
+                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
+        long amountTiyin = amountUzs * 100;
+        long before = driver.getBalance();
+        driverRepository.addToBalance(driverId, amountTiyin);
+
+        Transaction tx = new Transaction();
+        tx.setDriver(driver);
+        tx.setType(TransactionType.TOPUP);
+        tx.setAmount(amountTiyin);
+        tx.setBalanceBefore(before);
+        tx.setBalanceAfter(before + amountTiyin);
+        tx.setDescription("Admin tomonidan to'ldirildi");
+        tx.setPaymentMethod(paymentMethod);
+        transactionRepository.save(tx);
+
+        return Map.of(
+                "driverId", driverId,
+                "driverCode", driver.getDriverCode() != null ? driver.getDriverCode() : "",
+                "addedUzs", amountUzs,
+                "newBalanceUzs", (before + amountTiyin) / 100,
+                "message", "Balans muvaffaqiyatli to'ldirildi"
+        );
+    }
+
+    /** Admin — haydovchi online/offline holatini o'zgartirish */
+    @Transactional
+    public Map<String, Object> setDriverOnlineStatus(Long driverId, boolean isOnline) {
+        Driver driver = driverRepository.findById(driverId)
+                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
+        if (!isOnline) {
+            List<TripStatus> activeStatuses = List.of(
+                    TripStatus.ACCEPTED, TripStatus.DRIVER_ARRIVED, TripStatus.STARTED);
+            boolean hasActiveTrip = tripRepository
+                    .findFirstByDriverIdAndStatusIn(driverId, activeStatuses).isPresent();
+            if (hasActiveTrip) {
+                throw new ConflictException("Haydovchi hozir faol safarda");
+            }
+        }
+        driver.setOnline(isOnline);
+        driverRepository.save(driver);
+        return Map.of("id", driverId, "isOnline", isOnline);
+    }
+
+    /** Kengaytirilgan dashboard statistikasi: komissiya + admin to'ldirish aylanmasi */
+    public Map<String, Object> getDashboardExtendedStats() {
+        LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+        LocalDateTime monthStart = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+        LocalDateTime epoch = LocalDateTime.of(2000, 1, 1, 0, 0);
+
+        List<TransactionType> commTypes = List.of(
+                TransactionType.COMMISSION, TransactionType.TAXOMETER_COMMISSION);
+
+        // Komissiya — COMMISSION musbat, TAXOMETER_COMMISSION manfiy; ABS ishlatiladi
+        long commToday = transactionRepository.sumAbsAmountByTypesAfter(commTypes, todayStart);
+        long commMonth = transactionRepository.sumAbsAmountByTypesAfter(commTypes, monthStart);
+        long commTotal = transactionRepository.sumAbsAmountByTypesAfter(commTypes, epoch);
+
+        // Admin qo'l to'ldirish (paymentMethod IS NOT NULL)
+        long topupAmtToday = transactionRepository.sumAdminTopupAfter(todayStart);
+        long topupAmtMonth = transactionRepository.sumAdminTopupAfter(monthStart);
+        long topupAmtTotal = transactionRepository.sumAdminTopupAfter(epoch);
+
+        long topupDrvToday = transactionRepository.countDistinctDriversAdminTopupAfter(todayStart);
+        long topupDrvMonth = transactionRepository.countDistinctDriversAdminTopupAfter(monthStart);
+        long topupDrvTotal = transactionRepository.countDistinctDriversAdminTopupAfter(epoch);
+
+        long cashToday = transactionRepository.sumAdminTopupByMethodAfter("CASH", todayStart);
+        long cashMonth = transactionRepository.sumAdminTopupByMethodAfter("CASH", monthStart);
+        long cashTotal = transactionRepository.sumAdminTopupByMethodAfter("CASH", epoch);
+
+        long cardToday = transactionRepository.sumAdminTopupByMethodAfter("CARD", todayStart);
+        long cardMonth = transactionRepository.sumAdminTopupByMethodAfter("CARD", monthStart);
+        long cardTotal = transactionRepository.sumAdminTopupByMethodAfter("CARD", epoch);
+
+        Map<String, Object> commission = new LinkedHashMap<>();
+        commission.put("today", commToday / 100);
+        commission.put("month", commMonth / 100);
+        commission.put("total", commTotal / 100);
+
+        Map<String, Object> topupToday = new LinkedHashMap<>();
+        topupToday.put("amount", topupAmtToday / 100);
+        topupToday.put("drivers", topupDrvToday);
+        topupToday.put("cash", cashToday / 100);
+        topupToday.put("card", cardToday / 100);
+
+        Map<String, Object> topupMonth = new LinkedHashMap<>();
+        topupMonth.put("amount", topupAmtMonth / 100);
+        topupMonth.put("drivers", topupDrvMonth);
+        topupMonth.put("cash", cashMonth / 100);
+        topupMonth.put("card", cardMonth / 100);
+
+        Map<String, Object> topupTotalMap = new LinkedHashMap<>();
+        topupTotalMap.put("amount", topupAmtTotal / 100);
+        topupTotalMap.put("drivers", topupDrvTotal);
+        topupTotalMap.put("cash", cashTotal / 100);
+        topupTotalMap.put("card", cardTotal / 100);
+
+        Map<String, Object> topup = new LinkedHashMap<>();
+        topup.put("today", topupToday);
+        topup.put("month", topupMonth);
+        topup.put("total", topupTotalMap);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("commission", commission);
+        result.put("topup", topup);
+        return result;
+    }
+
+    /** Moliyaviy hisobot (oxirgi N kun) — optimallashtirilgan (3 query, N*3 emas) */
+    @Transactional(readOnly = true)
+    public List<FinancialReportResponse> getFinancialReport(int days) {
+        LocalDateTime periodStart = LocalDate.now().minusDays(days - 1).atStartOfDay();
+        LocalDateTime periodEnd = LocalDateTime.now();
+
+        // Bitta query bilan barcha COMPLETED triplarni olish
+        List<Trip> completedTrips = tripRepository.findByStatusAndCreatedAtBetweenList(
+                TripStatus.COMPLETED, periodStart, periodEnd);
+
+        // Bitta query bilan barcha CANCELLED triplarni olish
+        List<Trip> cancelledTrips = tripRepository.findByStatusInAndCreatedAtBetweenList(
+                List.of(TripStatus.CANCELLED_BY_PASSENGER, TripStatus.CANCELLED_BY_DRIVER),
+                periodStart, periodEnd);
+
+        // Java'da kunlik aggregatsiya
+        Map<LocalDate, long[]> dailyStats = new HashMap<>(); // [completedCount, revenue, cancelledCount]
+        for (int i = days - 1; i >= 0; i--) {
+            dailyStats.put(LocalDate.now().minusDays(i), new long[]{0, 0, 0});
+        }
+
+        for (Trip t : completedTrips) {
+            LocalDate date = t.getCreatedAt().toLocalDate();
+            long[] stats = dailyStats.get(date);
+            if (stats != null) {
+                stats[0]++;
+                stats[1] += t.getTotalPrice() != null ? t.getTotalPrice() : 0;
+            }
+        }
+        for (Trip t : cancelledTrips) {
+            LocalDate date = t.getCreatedAt().toLocalDate();
+            long[] stats = dailyStats.get(date);
+            if (stats != null) {
+                stats[2]++;
+            }
+        }
+
+        List<FinancialReportResponse> report = new ArrayList<>();
+        for (int i = days - 1; i >= 0; i--) {
+            LocalDate date = LocalDate.now().minusDays(i);
+            long[] stats = dailyStats.get(date);
+            report.add(new FinancialReportResponse(date.toString(),
+                    stats != null ? stats[0] : 0,
+                    stats != null ? stats[2] : 0,
+                    stats != null ? stats[1] / 100 : 0));
+        }
+        return report;
+    }
+
+}

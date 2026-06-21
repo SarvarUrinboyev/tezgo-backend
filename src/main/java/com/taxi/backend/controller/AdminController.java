@@ -1,0 +1,444 @@
+package com.taxi.backend.controller;
+
+import com.taxi.backend.dto.AdminTopupRequest;
+import com.taxi.backend.dto.SetPasswordRequest;
+import com.taxi.backend.dto.TariffRequest;
+import com.taxi.backend.exception.ConflictException;
+import com.taxi.backend.dto.response.AdminDriversPageResponse;
+import com.taxi.backend.model.User;
+import com.taxi.backend.service.AdminService;
+import com.taxi.backend.service.AuthService;
+import com.taxi.backend.service.PhotoService;
+import com.taxi.backend.service.TripService;
+import com.taxi.backend.repository.OtpRepository;
+import com.taxi.backend.repository.TariffRepository;
+import com.taxi.backend.repository.UserRepository;
+import com.taxi.backend.model.Tariff;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.time.LocalDateTime;
+import java.util.Map;
+
+@Tag(name = "Admin", description = "Admin panel — haydovchilar, yo'lovchilar, buyurtmalar, hisobotlar boshqarish")
+@RestController
+@RequestMapping("/api/admin")
+public class AdminController {
+
+    private final AdminService adminService;
+    private final PhotoService photoService;
+    private final TariffRepository tariffRepository;
+    private final UserRepository userRepository;
+    private final com.taxi.backend.repository.TripRepository tripRepository;
+    private final org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate;
+    private final OtpRepository otpRepository;
+    private final AuthService authService;
+    private final com.taxi.backend.service.SystemSettingService systemSettingService;
+
+    public AdminController(AdminService adminService,
+            PhotoService photoService,
+            TariffRepository tariffRepository,
+            UserRepository userRepository,
+            com.taxi.backend.repository.TripRepository tripRepository,
+            org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate,
+            OtpRepository otpRepository,
+            AuthService authService,
+            com.taxi.backend.service.SystemSettingService systemSettingService) {
+        this.adminService = adminService;
+        this.photoService = photoService;
+        this.tariffRepository = tariffRepository;
+        this.userRepository = userRepository;
+        this.tripRepository = tripRepository;
+        this.redisTemplate = redisTemplate;
+        this.otpRepository = otpRepository;
+        this.authService = authService;
+        this.systemSettingService = systemSettingService;
+    }
+
+    // ─── Sozlamalar: talab narxi (surge) toggle — default OFF ─────────────────
+
+    @Operation(summary = "Surge holati", description = "Talab narxi (surge) yoqilgan/o'chiqligini qaytaradi")
+    @GetMapping("/settings/surge")
+    public ResponseEntity<?> getSurgeSetting() {
+        return ResponseEntity.ok(Map.of("enabled", systemSettingService.isSurgeEnabled()));
+    }
+
+    @Operation(summary = "Surge yoqish/o'chirish", description = "Talab narxini (surge) admin yoqadi yoki o'chiradi. Tungi tarif bundan mustaqil.")
+    @PutMapping("/settings/surge")
+    public ResponseEntity<?> setSurgeSetting(@RequestBody Map<String, Object> body) {
+        boolean enabled = Boolean.TRUE.equals(body.get("enabled"));
+        systemSettingService.setSurgeEnabled(enabled);
+        return ResponseEntity.ok(Map.of("enabled", enabled));
+    }
+
+    @Operation(summary = "Dashboard statistikasi", description = "Haydovchilar, buyurtmalar, daromad haqida real-time statistika")
+    @GetMapping("/stats")
+    public ResponseEntity<?> stats() {
+        return ResponseEntity.ok(adminService.getDashboardStats());
+    }
+
+    /** Haydovchilar ro'yxati */
+    @GetMapping("/drivers")
+    public ResponseEntity<?> drivers(@RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        if (size > 100) size = 100; if (size < 1) size = 20;
+        var p = adminService.getDrivers(status, PageRequest.of(page, size, Sort.by("id").descending()));
+        long liniyada = adminService.getLiniyadaCount();
+        return ResponseEntity.ok(new AdminDriversPageResponse(
+                p.getContent(), p.getTotalElements(), p.getTotalPages(),
+                p.getSize(), p.getNumber(), liniyada));
+    }
+
+    /** Haydovchi tasdiqlash */
+    @PutMapping("/drivers/{id}/approve")
+    public ResponseEntity<?> approve(@PathVariable Long id, @AuthenticationPrincipal User admin) {
+        try {
+            return ResponseEntity.ok(adminService.approveDriver(id, admin));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Haydovchi bloklash */
+    @PutMapping("/drivers/{id}/block")
+    public ResponseEntity<?> block(@PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> body) {
+        String reason = body != null ? body.getOrDefault("reason", "Sabab ko'rsatilmadi") : "—";
+        try {
+            return ResponseEntity.ok(adminService.blockDriver(id, reason));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Haydovchi o'chirish */
+    @DeleteMapping("/drivers/{id}")
+    public ResponseEntity<?> deleteDriver(@PathVariable Long id) {
+        try {
+            adminService.deleteDriver(id);
+            return ResponseEntity.ok(Map.of("ok", true));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Haydovchilar qidirish — ism, telefon yoki driver_code bo'yicha */
+    @GetMapping("/drivers/search")
+    public ResponseEntity<?> searchDrivers(
+            @RequestParam String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        if (q == null || q.isBlank())
+            return ResponseEntity.badRequest().body(Map.of("error", "q parametri kerak"));
+        if (size > 100) size = 100;
+        var result = adminService.searchDrivers(q.trim(),
+                PageRequest.of(page, size, Sort.by("id").descending()));
+        return ResponseEntity.ok(result);
+    }
+
+    /** Haydovchi kodi bo'yicha (TZ-XXXX) */
+    @GetMapping("/drivers/by-code/{code}")
+    public ResponseEntity<?> getDriverByCode(@PathVariable String code) {
+        try {
+            return ResponseEntity.ok(adminService.getDriverByCode(code));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Admin — haydovchi balansini to'ldirish (CASH yoki CARD) */
+    @PostMapping("/drivers/{id}/topup")
+    public ResponseEntity<?> adminTopupBalance(@PathVariable Long id,
+            @Valid @RequestBody AdminTopupRequest req) {
+        try {
+            return ResponseEntity.ok(adminService.adminTopupBalance(id, req.getAmount(), req.getPaymentMethod()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Admin — haydovchini qo'lda online/offline qilish */
+    @PatchMapping("/drivers/{id}/online-status")
+    public ResponseEntity<?> setDriverOnlineStatus(@PathVariable Long id,
+            @RequestBody Map<String, Boolean> body) {
+        Boolean isOnline = body.get("isOnline");
+        if (isOnline == null)
+            return ResponseEntity.badRequest().body(Map.of("error", "isOnline (boolean) kerak"));
+        try {
+            return ResponseEntity.ok(adminService.setDriverOnlineStatus(id, isOnline));
+        } catch (ConflictException e) {
+            return ResponseEntity.status(409).body(Map.of("error", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Kengaytirilgan dashboard statistikasi: komissiya foydasi + balans aylanmasi */
+    @GetMapping("/dashboard/stats")
+    public ResponseEntity<?> dashboardExtendedStats() {
+        return ResponseEntity.ok(adminService.getDashboardExtendedStats());
+    }
+
+    /** Haydovchi rasmlari (foto nazorat) */
+    @GetMapping("/drivers/{id}/photos")
+    public ResponseEntity<?> photos(@PathVariable Long id) {
+        return ResponseEntity.ok(adminService.getDriverPhotos(id));
+    }
+
+    /** Rasmni tasdiqlash */
+    @PutMapping("/photos/{id}/approve")
+    public ResponseEntity<?> approvePhoto(@PathVariable Long id, @AuthenticationPrincipal User admin) {
+        return ResponseEntity.ok(adminService.approvePhoto(id, admin));
+    }
+
+    /** Rasmni rad etish */
+    @PutMapping("/photos/{id}/reject")
+    public ResponseEntity<?> rejectPhoto(@PathVariable Long id,
+            @Valid @RequestBody com.taxi.backend.dto.RejectRequest req,
+            @AuthenticationPrincipal User admin) {
+        return ResponseEntity.ok(adminService.rejectPhoto(id, req.getReason(), admin));
+    }
+
+    /** Broadcast xabar yuborish */
+    @PostMapping("/messages/broadcast")
+    public ResponseEntity<?> broadcast(@Valid @RequestBody com.taxi.backend.dto.BroadcastRequest req,
+            @AuthenticationPrincipal User admin) {
+        try {
+            return ResponseEntity.ok(adminService.sendBroadcast(
+                    req.getTitle(), req.getContent(),
+                    req.getTarget() != null ? req.getTarget() : "ALL", admin));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Barcha buyurtmalar (source filter: ALL, APP, CALL, ADMIN, TAXOMETER) */
+    @GetMapping("/trips")
+    public ResponseEntity<?> trips(@RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "") String source) {
+        if (size > 100) size = 100; if (size < 1) size = 20;
+        return ResponseEntity.ok(adminService.getAllTrips(
+                PageRequest.of(page, size, Sort.by("createdAt").descending()),
+                source.isBlank() ? null : source));
+    }
+
+    /** Bitta buyurtma batafsil + chat tarixi */
+    @GetMapping("/trips/{id}")
+    public ResponseEntity<?> tripDetail(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(adminService.getTripDetail(id));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Admin uchun trip chat (hech qachon o'chmaydi) */
+    @GetMapping("/trips/{id}/chat")
+    public ResponseEntity<?> tripChat(@PathVariable Long id) {
+        return ResponseEntity.ok(adminService.getTripChat(id));
+    }
+
+    /** Barcha sharhlar (Ratings) */
+    @GetMapping("/ratings")
+    public ResponseEntity<?> ratings(@RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        if (size > 100) size = 100; if (size < 1) size = 20;
+        return ResponseEntity.ok(adminService.getAllRatings(
+                PageRequest.of(page, size, Sort.by("createdAt").descending())));
+    }
+
+    /** Tariflar */
+    @GetMapping("/tariffs")
+    public ResponseEntity<?> tariffs() {
+        return ResponseEntity.ok(tariffRepository.findAll());
+    }
+
+    @PostMapping("/tariffs")
+    public ResponseEntity<?> createTariff(@Valid @RequestBody TariffRequest req) {
+        Tariff tariff = new Tariff();
+        tariff.setName(req.getName());
+        tariff.setBasePrice(req.getBasePrice());
+        tariff.setPricePerKm(req.getPricePerKm());
+        tariff.setPricePerMin(req.getPricePerMin() != null ? req.getPricePerMin() : 0L);
+        tariff.setMinPrice(req.getMinPrice() != null ? req.getMinPrice() : 0L);
+        tariff.setActive(req.isActive());
+        return ResponseEntity.ok(tariffRepository.save(tariff));
+    }
+
+    @PutMapping("/tariffs/{id}")
+    public ResponseEntity<?> updateTariff(@PathVariable Long id, @Valid @RequestBody TariffRequest req) {
+        return tariffRepository.findById(id).map(t -> {
+            t.setName(req.getName());
+            t.setBasePrice(req.getBasePrice());
+            t.setPricePerKm(req.getPricePerKm());
+            t.setPricePerMin(req.getPricePerMin() != null ? req.getPricePerMin() : 0L);
+            t.setMinPrice(req.getMinPrice() != null ? req.getMinPrice() : 0L);
+            t.setActive(req.isActive());
+            return ResponseEntity.ok(tariffRepository.save(t));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    /** Yo'lovchilar ro'yxati */
+    @GetMapping("/passengers")
+    public ResponseEntity<?> passengers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        if (size > 100) size = 100; if (size < 1) size = 20;
+        return ResponseEntity.ok(adminService.getPassengers(
+                PageRequest.of(page, size, Sort.by("id").descending())));
+    }
+
+    /** Yo'lovchini o'chirish */
+    @DeleteMapping("/passengers/{id}")
+    public ResponseEntity<?> deletePassenger(@PathVariable Long id) {
+        try {
+            adminService.deletePassenger(id);
+            return ResponseEntity.ok(Map.of("ok", true));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Yo'lovchini bloklash */
+    @PutMapping("/passengers/{id}/block")
+    public ResponseEntity<?> blockPassenger(@PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> body) {
+        try {
+            return ResponseEntity.ok(adminService.blockPassenger(id));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Online haydovchilar xaritasi uchun */
+    @GetMapping("/drivers/online")
+    public ResponseEntity<?> onlineDrivers() {
+        return ResponseEntity.ok(adminService.getOnlineDriversForMap());
+    }
+
+    /** Moliyaviy hisobotlar */
+    @GetMapping("/reports/financial")
+    public ResponseEntity<?> financialReports(
+            @RequestParam(defaultValue = "30") int days) {
+        if (days > 365) days = 365; if (days < 1) days = 30;
+        return ResponseEntity.ok(adminService.getFinancialReport(days));
+    }
+
+    /** Operator foydalanuvchi yaratish */
+    @PostMapping("/operators")
+    public ResponseEntity<?> createOperator(
+            @Valid @RequestBody com.taxi.backend.dto.CreateOperatorRequest req) {
+        try {
+            var existing = userRepository.findByPhone(req.getPhone());
+            if (existing.isPresent()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Bu telefon raqam allaqachon mavjud"));
+            }
+            com.taxi.backend.model.User user = new com.taxi.backend.model.User();
+            user.setPhone(req.getPhone());
+            user.setName(req.getName());
+            user.setRole(com.taxi.backend.enums.Role.OPERATOR);
+            user.setActive(true);
+            userRepository.save(user);
+            return ResponseEntity.ok(Map.of(
+                    "id", user.getId(),
+                    "name", user.getName(),
+                    "phone", user.getPhone(),
+                    "role", "OPERATOR"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Operatorlar ro'yxati */
+    @GetMapping("/operators")
+    public ResponseEntity<?> getOperators() {
+        var operators = userRepository.findAll().stream()
+                .filter(u -> u.getRole() == com.taxi.backend.enums.Role.OPERATOR)
+                .map(u -> Map.of("id", (Object) u.getId(), "name", (Object) u.getName(),
+                        "phone", (Object) u.getPhone(), "active", (Object) u.isActive()))
+                .toList();
+        return ResponseEntity.ok(operators);
+    }
+
+    /** Admin — istalgan faol buyurtmani bekor qilish */
+    @PostMapping("/trips/{tripId}/cancel")
+    public ResponseEntity<?> adminCancelTrip(@PathVariable Long tripId,
+            @RequestBody(required = false) Map<String, String> body) {
+        try {
+            String reason = body != null ? body.getOrDefault("reason", "").trim() : "";
+            if (reason.length() < 3)
+                return ResponseEntity.badRequest().body(Map.of("error", "Sabab kamida 3 ta belgidan iborat bo'lishi kerak"));
+            return ResponseEntity.ok(adminService.adminCancelTrip(tripId, reason));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** OTP Monitor — so'nggi 30 daqiqa OTP kodlari */
+    @GetMapping("/otp/monitor")
+    public ResponseEntity<?> otpMonitor() {
+        java.time.LocalDateTime since = java.time.LocalDateTime.now().minusMinutes(30);
+        var codes = otpRepository.findTop50ByCreatedAtAfterOrderByCreatedAtDesc(since);
+        var result = codes.stream().map(o -> {
+            java.util.LinkedHashMap<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("id", o.getId());
+            m.put("phone", o.getPhone());
+            m.put("code", o.getCode());
+            m.put("createdAt", o.getCreatedAt() != null ? o.getCreatedAt().toString() : null);
+            m.put("expiresAt", o.getExpiresAt().toString());
+            m.put("isUsed", o.isUsed());
+            return m;
+        }).toList();
+        return ResponseEntity.ok(result);
+    }
+
+    @Operation(summary = "Source statistikasi", description = "CALL vs APP buyurtmalar soni va SMS yuborilgan soni. Qo'ng'iroqdan ilovaga o'tish foizini kuzatish uchun.")
+    @GetMapping("/stats/source-summary")
+    public ResponseEntity<?> sourceSummary() {
+        LocalDateTime todayStart = LocalDateTime.now().toLocalDate().atStartOfDay();
+
+        long todayCallTrips = tripRepository.countBySourceAndCreatedAtAfter("CALL", todayStart);
+        long todayAppTrips = tripRepository.countBySourceAndCreatedAtAfter("APP", todayStart);
+
+        // SMS soni — Redis dan "sms:invite:*" kalitlarni hisoblash
+        long smsSentToday = 0;
+        long totalSmsSent = 0;
+        try {
+            java.util.Set<String> keys = redisTemplate.keys("sms:invite:*");
+            smsSentToday = keys != null ? keys.size() : 0;
+            // totalSmsSent uchun aniq hisob yo'q — bugungi sonini ko'rsatamiz
+            totalSmsSent = smsSentToday;
+        } catch (Exception e) {
+            // Redis ulanmagan bo'lsa — 0
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "todayCallTrips", todayCallTrips,
+                "todayAppTrips", todayAppTrips,
+                "totalSmsSent", totalSmsSent,
+                "smsSentToday", smsSentToday));
+    }
+
+    @Operation(summary = "Foydalanuvchi parolini o'rnatish", description = "Admin operator yoki boshqa ADMIN parolini belgilaydi/tiklaydi")
+    @PostMapping("/users/{id}/set-password")
+    public ResponseEntity<?> setUserPassword(@PathVariable Long id,
+            @Valid @RequestBody SetPasswordRequest req) {
+        try {
+            authService.setPassword(id, req.getNewPassword());
+            return ResponseEntity.ok(Map.of("message", "Parol muvaffaqiyatli o'rnatildi"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
+    }
+}

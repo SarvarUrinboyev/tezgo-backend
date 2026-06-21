@@ -1,0 +1,178 @@
+### TezYol API Tests
+### VS Code extension: "REST Client" (humao.rest-client) o'rnating
+
+@baseUrl = http://localhost:8080
+@phone = +998901234567
+@adminPhone = +998900000000
+
+### ─── 1. AUTH ─────────────────────────────────────────────────────────────
+
+### OTP so'rash (log'da kodni ko'rasiz)
+POST {{baseUrl}}/api/auth/send-otp
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}"
+}
+
+###
+
+### OTP tasdiqlash → TOKEN olish (kodni log'dan ko'chiring)
+# @name login
+POST {{baseUrl}}/api/auth/verify-otp
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}",
+  "code": "1234",
+  "role": "PASSENGER"
+}
+
+###
+
+### Token saqlash (yuqoridagi response'dan ko'chiring)
+@token = PASTE_TOKEN_HERE
+
+### ─── 2. PASSENGER ────────────────────────────────────────────────────────
+
+### Tariflar ro'yxati
+GET {{baseUrl}}/api/passenger/tariffs
+Authorization: Bearer {{token}}
+
+###
+
+### Narx hisoblash (surge bilan)
+POST {{baseUrl}}/api/passenger/trips/estimate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "tariffId": 1,
+  "distanceKm": 5.0,
+  "lat": 41.2995,
+  "lon": 69.2401
+}
+
+###
+
+### Demand indikatori (surge darajasi)
+GET {{baseUrl}}/api/passenger/demand?lat=41.2995&lon=69.2401
+Authorization: Bearer {{token}}
+
+###
+
+### Yaqin haydovchilar
+GET {{baseUrl}}/api/passenger/nearby-drivers?lat=41.2995&lon=69.2401
+Authorization: Bearer {{token}}
+
+###
+
+### Buyurtma berish
+POST {{baseUrl}}/api/passenger/trips
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "tariffId": 1,
+  "fromAddress": "Chilonzor, Toshkent",
+  "toAddress": "Yunusobod, Toshkent",
+  "fromLat": 41.2995,
+  "fromLon": 69.2401,
+  "toLat": 41.3400,
+  "toLon": 69.2900,
+  "distance": 5200
+}
+
+###
+
+### Faol trip
+GET {{baseUrl}}/api/passenger/trips/active
+Authorization: Bearer {{token}}
+
+###
+
+### Trip tarixi
+GET {{baseUrl}}/api/passenger/trips?page=0&size=10
+Authorization: Bearer {{token}}
+
+###
+
+### Statistika
+GET {{baseUrl}}/api/passenger/stats
+Authorization: Bearer {{token}}
+
+### ─── 3. ADMIN ────────────────────────────────────────────────────────────
+
+### Admin OTP
+POST {{baseUrl}}/api/auth/send-otp
+Content-Type: application/json
+
+{
+  "phone": "{{adminPhone}}"
+}
+
+###
+
+### Admin login
+# @name adminLogin
+POST {{baseUrl}}/api/auth/verify-otp
+Content-Type: application/json
+
+{
+  "phone": "{{adminPhone}}",
+  "code": "1234",
+  "role": "ADMIN"
+}
+
+###
+
+@adminToken = PASTE_ADMIN_TOKEN_HERE
+
+### Barcha triplar (admin)
+GET {{baseUrl}}/api/admin/trips?page=0&size=10
+Authorization: Bearer {{adminToken}}
+
+###
+
+### Statistika (admin)
+GET {{baseUrl}}/api/admin/stats
+Authorization: Bearer {{adminToken}}
+
+###
+
+### Tariflar boshqaruvi (admin)
+GET {{baseUrl}}/api/admin/tariffs
+Authorization: Bearer {{adminToken}}
+
+### ─── 4. DRIVER ───────────────────────────────────────────────────────────
+
+@driverPhone = +998911234567
+@driverToken = PASTE_DRIVER_TOKEN_HERE
+
+### Haydovchi profili
+GET {{baseUrl}}/api/driver/profile
+Authorization: Bearer {{driverToken}}
+
+###
+
+### Online/Offline toggle
+POST {{baseUrl}}/api/driver/toggle-online
+Authorization: Bearer {{driverToken}}
+
+###
+
+### Lokatsiya yangilash
+POST {{baseUrl}}/api/driver/location
+Authorization: Bearer {{driverToken}}
+Content-Type: application/json
+
+{
+  "lat": 41.2995,
+  "lon": 69.2401
+}
+
+###
+
+### Kelayotgan trip'larni ko'rish
+GET {{baseUrl}}/api/driver/trips/pending
+Authorization: Bearer {{driverToken}}

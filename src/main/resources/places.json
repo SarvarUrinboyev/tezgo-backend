@@ -1,0 +1,2348 @@
+[
+  {
+    "name": "Parkent hokimiyati",
+    "lat": 41.2945,
+    "lon": 69.6735,
+    "alt": [
+      "hokimlik",
+      "tuman hokimiyati"
+    ]
+  },
+  {
+    "name": "Parkent tuman soliq boshqarmasi",
+    "lat": 41.2943,
+    "lon": 69.674,
+    "alt": [
+      "soliq",
+      "nalog"
+    ]
+  },
+  {
+    "name": "Parkent tuman IIB",
+    "lat": 41.2947,
+    "lon": 69.673,
+    "alt": [
+      "militsiya",
+      "politsiya",
+      "ichki ishlar"
+    ]
+  },
+  {
+    "name": "Parkent tuman prokuraturasi",
+    "lat": 41.2944,
+    "lon": 69.6728,
+    "alt": [
+      "prokuror"
+    ]
+  },
+  {
+    "name": "Parkent OVIR (pasport stol)",
+    "lat": 41.2941,
+    "lon": 69.6733,
+    "alt": [
+      "pasport",
+      "ovir",
+      "migratsiya"
+    ]
+  },
+  {
+    "name": "Parkent tuman sudi",
+    "lat": 41.2946,
+    "lon": 69.6725,
+    "alt": [
+      "sud",
+      "sudya"
+    ]
+  },
+  {
+    "name": "Parkent davlat xizmatlari markazi",
+    "lat": 41.294,
+    "lon": 69.6738,
+    "alt": [
+      "DXM",
+      "yagona darcha"
+    ]
+  },
+  {
+    "name": "Parkent YPX (GAI)",
+    "lat": 41.2935,
+    "lon": 69.6715,
+    "alt": [
+      "gai",
+      "yo'l patrul",
+      "ypx"
+    ]
+  },
+  {
+    "name": "Parkent tuman FHDYO (ZAGS)",
+    "lat": 41.29,
+    "lon": 69.665,
+    "alt": [
+      "zags",
+      "nikoh",
+      "tugilish guvohnomasi"
+    ]
+  },
+  {
+    "name": "Parkent kadastr bo'limi",
+    "lat": 41.2942,
+    "lon": 69.6732,
+    "alt": [
+      "kadastr",
+      "yer",
+      "kvartira hujjat"
+    ]
+  },
+  {
+    "name": "Parkent majburiy ijro byurosi",
+    "lat": 41.29,
+    "lon": 69.6655,
+    "alt": [
+      "ijro",
+      "sudvoz"
+    ]
+  },
+  {
+    "name": "Parkent harbiy komissariyati",
+    "lat": 41.2938,
+    "lon": 69.672,
+    "alt": [
+      "voenkomat",
+      "harbiy",
+      "armiya"
+    ]
+  },
+  {
+    "name": "Parkent tuman kasalxonasi",
+    "lat": 41.296,
+    "lon": 69.68,
+    "alt": [
+      "bolnitsa",
+      "kasalxona",
+      "gospital",
+      "shifoxona"
+    ]
+  },
+  {
+    "name": "Parkent poliklinikasi",
+    "lat": 41.2938,
+    "lon": 69.676,
+    "alt": [
+      "poliklinika"
+    ]
+  },
+  {
+    "name": "Parkent tez yordam",
+    "lat": 41.2955,
+    "lon": 69.6795,
+    "alt": [
+      "skoriy",
+      "tez yordam",
+      "ambulans"
+    ]
+  },
+  {
+    "name": "Parkent tish poliklinikasi",
+    "lat": 41.294,
+    "lon": 69.6755,
+    "alt": [
+      "tish doktor",
+      "stomatolog"
+    ]
+  },
+  {
+    "name": "Parkent tuman oilaviy poliklinika",
+    "lat": 41.2937,
+    "lon": 69.6758,
+    "alt": [
+      "oilaviy vrach",
+      "semey"
+    ]
+  },
+  {
+    "name": "Parkent dorixonasi (Dori-Darmon)",
+    "lat": 41.2948,
+    "lon": 69.675,
+    "alt": [
+      "apteka",
+      "dorixona",
+      "dori darmon"
+    ]
+  },
+  {
+    "name": "Parkent tuman tibbiyot birlashmasi (TTB)",
+    "lat": 41.2958,
+    "lon": 69.6798,
+    "alt": [
+      "ttb",
+      "tibbiyot birlashmasi"
+    ]
+  },
+  {
+    "name": "Parkent DSENM (sanitariya)",
+    "lat": 41.2952,
+    "lon": 69.6785,
+    "alt": [
+      "ses",
+      "sanitariya",
+      "gigiena"
+    ]
+  },
+  {
+    "name": "Parkent Goodlife dorixona",
+    "lat": 41.2946,
+    "lon": 69.6752,
+    "alt": [
+      "goodlife",
+      "dorixona"
+    ]
+  },
+  {
+    "name": "Parkent Narvon dorixona",
+    "lat": 41.2944,
+    "lon": 69.6748,
+    "alt": [
+      "narvon"
+    ]
+  },
+  {
+    "name": "Zarkent oilaviy poliklinika",
+    "lat": 41.305,
+    "lon": 69.71,
+    "alt": [
+      "zarkent vrach",
+      "zarkent shifoxona"
+    ]
+  },
+  {
+    "name": "So'qoq oilaviy poliklinika",
+    "lat": 41.3105,
+    "lon": 69.721,
+    "alt": [
+      "sukkok vrach",
+      "soqoq shifoxona"
+    ]
+  },
+  {
+    "name": "Kumushkon oilaviy poliklinika",
+    "lat": 41.34,
+    "lon": 69.749,
+    "alt": [
+      "kumushkon vrach"
+    ]
+  },
+  {
+    "name": "Qo'rg'ontepa oilaviy poliklinika",
+    "lat": 41.2905,
+    "lon": 69.6615,
+    "alt": [
+      "qorgontepa vrach"
+    ]
+  },
+  {
+    "name": "Parkent 1-maktab",
+    "lat": 41.2942,
+    "lon": 69.6745
+  },
+  {
+    "name": "Parkent 2-maktab",
+    "lat": 41.293,
+    "lon": 69.678
+  },
+  {
+    "name": "Parkent 3-maktab",
+    "lat": 41.296,
+    "lon": 69.67
+  },
+  {
+    "name": "Parkent 4-maktab",
+    "lat": 41.2925,
+    "lon": 69.672
+  },
+  {
+    "name": "Parkent 5-maktab",
+    "lat": 41.297,
+    "lon": 69.681,
+    "alt": [
+      "beshchi maktab",
+      "5-maktab"
+    ]
+  },
+  {
+    "name": "Parkent 6-maktab",
+    "lat": 41.2915,
+    "lon": 69.669
+  },
+  {
+    "name": "Parkent 7-maktab",
+    "lat": 41.298,
+    "lon": 69.675
+  },
+  {
+    "name": "Parkent 8-maktab (ixtisoslashtirilgan)",
+    "lat": 41.29,
+    "lon": 69.666,
+    "alt": [
+      "8-maktab",
+      "it maktab"
+    ]
+  },
+  {
+    "name": "Parkent 9-maktab",
+    "lat": 41.299,
+    "lon": 69.683
+  },
+  {
+    "name": "Parkent 10-maktab",
+    "lat": 41.292,
+    "lon": 69.664
+  },
+  {
+    "name": "Parkent 11-maktab",
+    "lat": 41.2895,
+    "lon": 69.663
+  },
+  {
+    "name": "Parkent 12-maktab",
+    "lat": 41.2888,
+    "lon": 69.662
+  },
+  {
+    "name": "Parkent 13-maktab",
+    "lat": 41.2912,
+    "lon": 69.667
+  },
+  {
+    "name": "Parkent 14-maktab",
+    "lat": 41.301,
+    "lon": 69.685
+  },
+  {
+    "name": "Parkent 15-maktab",
+    "lat": 41.302,
+    "lon": 69.686
+  },
+  {
+    "name": "Parkent 16-maktab",
+    "lat": 41.288,
+    "lon": 69.661
+  },
+  {
+    "name": "Parkent 17-maktab",
+    "lat": 41.287,
+    "lon": 69.66
+  },
+  {
+    "name": "Parkent 18-maktab",
+    "lat": 41.286,
+    "lon": 69.659
+  },
+  {
+    "name": "Parkent 19-maktab",
+    "lat": 41.3005,
+    "lon": 69.684
+  },
+  {
+    "name": "Parkent 20-maktab (Nevich)",
+    "lat": 41.325,
+    "lon": 69.695,
+    "alt": [
+      "nevich maktab"
+    ]
+  },
+  {
+    "name": "Parkent 21-maktab",
+    "lat": 41.303,
+    "lon": 69.687
+  },
+  {
+    "name": "Parkent 22-maktab",
+    "lat": 41.2855,
+    "lon": 69.658
+  },
+  {
+    "name": "Parkent 23-maktab",
+    "lat": 41.2845,
+    "lon": 69.657
+  },
+  {
+    "name": "Parkent 24-maktab",
+    "lat": 41.304,
+    "lon": 69.688
+  },
+  {
+    "name": "Parkent 25-maktab",
+    "lat": 41.305,
+    "lon": 69.689
+  },
+  {
+    "name": "Parkent 26-maktab",
+    "lat": 41.2835,
+    "lon": 69.6555
+  },
+  {
+    "name": "Parkent 27-maktab",
+    "lat": 41.306,
+    "lon": 69.69
+  },
+  {
+    "name": "Parkent 28-maktab",
+    "lat": 41.2825,
+    "lon": 69.654
+  },
+  {
+    "name": "Parkent 29-maktab",
+    "lat": 41.307,
+    "lon": 69.691
+  },
+  {
+    "name": "Parkent 30-maktab",
+    "lat": 41.2815,
+    "lon": 69.653
+  },
+  {
+    "name": "Parkent 31-maktab",
+    "lat": 41.308,
+    "lon": 69.692
+  },
+  {
+    "name": "Parkent 32-maktab",
+    "lat": 41.28,
+    "lon": 69.652
+  },
+  {
+    "name": "Parkent 33-maktab",
+    "lat": 41.309,
+    "lon": 69.693
+  },
+  {
+    "name": "Parkent 34-maktab (Zarkent)",
+    "lat": 41.305,
+    "lon": 69.7105,
+    "alt": [
+      "zarkent maktab"
+    ]
+  },
+  {
+    "name": "Parkent 35-maktab",
+    "lat": 41.31,
+    "lon": 69.694
+  },
+  {
+    "name": "Parkent 36-maktab",
+    "lat": 41.2795,
+    "lon": 69.651
+  },
+  {
+    "name": "Parkent 37-maktab",
+    "lat": 41.311,
+    "lon": 69.695
+  },
+  {
+    "name": "Parkent 38-maktab",
+    "lat": 41.2785,
+    "lon": 69.6495
+  },
+  {
+    "name": "Parkent 39-maktab",
+    "lat": 41.312,
+    "lon": 69.696
+  },
+  {
+    "name": "Parkent 40-maktab",
+    "lat": 41.2775,
+    "lon": 69.6485
+  },
+  {
+    "name": "Parkent 41-maktab",
+    "lat": 41.313,
+    "lon": 69.697
+  },
+  {
+    "name": "Parkent 42-maktab",
+    "lat": 41.2765,
+    "lon": 69.6475
+  },
+  {
+    "name": "Parkent 43-maktab",
+    "lat": 41.314,
+    "lon": 69.698
+  },
+  {
+    "name": "Parkent 44-maktab",
+    "lat": 41.2755,
+    "lon": 69.6465
+  },
+  {
+    "name": "Parkent 45-maktab",
+    "lat": 41.295,
+    "lon": 69.677
+  },
+  {
+    "name": "Parkent 46-maktab",
+    "lat": 41.2745,
+    "lon": 69.6455
+  },
+  {
+    "name": "Parkent 47-maktab",
+    "lat": 41.315,
+    "lon": 69.699
+  },
+  {
+    "name": "Parkent 48-maktab (Zarkent)",
+    "lat": 41.3055,
+    "lon": 69.711,
+    "alt": [
+      "zarkent 48-maktab"
+    ]
+  },
+  {
+    "name": "Parkent 49-maktab",
+    "lat": 41.316,
+    "lon": 69.7
+  },
+  {
+    "name": "Parkent musiqa maktabi",
+    "lat": 41.2948,
+    "lon": 69.6742,
+    "alt": [
+      "muzika",
+      "musiqa"
+    ]
+  },
+  {
+    "name": "Parkent sport maktabi (DUSSH)",
+    "lat": 41.2936,
+    "lon": 69.6788,
+    "alt": [
+      "sport maktab",
+      "dussh"
+    ]
+  },
+  {
+    "name": "Parkent kasb-hunar kolleji",
+    "lat": 41.2932,
+    "lon": 69.671,
+    "alt": [
+      "kollej",
+      "kasb hunar"
+    ]
+  },
+  {
+    "name": "Parkent Prezident maktabi",
+    "lat": 41.2955,
+    "lon": 69.676,
+    "alt": [
+      "prezident maktab",
+      "ixtisoslashtirilgan"
+    ]
+  },
+  {
+    "name": "Parkent bolalar bog'chasi 1",
+    "lat": 41.295,
+    "lon": 69.674,
+    "alt": [
+      "bogcha",
+      "sadik",
+      "detskiy sad"
+    ]
+  },
+  {
+    "name": "Parkent bolalar bog'chasi 2",
+    "lat": 41.2935,
+    "lon": 69.677,
+    "alt": [
+      "bogcha 2"
+    ]
+  },
+  {
+    "name": "Parkent bolalar bog'chasi 3",
+    "lat": 41.2925,
+    "lon": 69.673,
+    "alt": [
+      "bogcha 3"
+    ]
+  },
+  {
+    "name": "Parkent bolalar bog'chasi 4",
+    "lat": 41.2918,
+    "lon": 69.67,
+    "alt": [
+      "bogcha 4"
+    ]
+  },
+  {
+    "name": "Parkent bolalar bog'chasi 5",
+    "lat": 41.296,
+    "lon": 69.678,
+    "alt": [
+      "bogcha 5"
+    ]
+  },
+  {
+    "name": "Parkent markaziy masjid (Jome)",
+    "lat": 41.2948,
+    "lon": 69.6755,
+    "alt": [
+      "jome masjid",
+      "katta masjid",
+      "bosh masjid"
+    ]
+  },
+  {
+    "name": "Oqtosh masjidi",
+    "lat": 41.2922,
+    "lon": 69.6682
+  },
+  {
+    "name": "Guliston masjidi",
+    "lat": 41.2957,
+    "lon": 69.6815
+  },
+  {
+    "name": "Tinchlik masjidi",
+    "lat": 41.2912,
+    "lon": 69.6752
+  },
+  {
+    "name": "Yangi hayot masjidi",
+    "lat": 41.2982,
+    "lon": 69.6775
+  },
+  {
+    "name": "Do'stlik masjidi",
+    "lat": 41.2967,
+    "lon": 69.6695
+  },
+  {
+    "name": "Navro'z masjidi",
+    "lat": 41.2972,
+    "lon": 69.6725
+  },
+  {
+    "name": "Bog'bon masjidi",
+    "lat": 41.2892,
+    "lon": 69.6725
+  },
+  {
+    "name": "Qorabog' masjidi",
+    "lat": 41.2805,
+    "lon": 69.6505
+  },
+  {
+    "name": "So'qoq masjidi",
+    "lat": 41.3105,
+    "lon": 69.7205,
+    "alt": [
+      "sukkok masjid",
+      "sukok masjid"
+    ]
+  },
+  {
+    "name": "Istiqlol masjidi",
+    "lat": 41.2975,
+    "lon": 69.6685
+  },
+  {
+    "name": "Bunyodkor masjidi",
+    "lat": 41.2908,
+    "lon": 69.6715
+  },
+  {
+    "name": "Mehnat masjidi",
+    "lat": 41.2988,
+    "lon": 69.6805
+  },
+  {
+    "name": "Hazrati Ali Buva masjidi (Kumushkon)",
+    "lat": 41.34,
+    "lon": 69.752,
+    "alt": [
+      "hazrat ali",
+      "ali buva",
+      "kumushkon masjid",
+      "ziyoratgoh"
+    ]
+  },
+  {
+    "name": "Ubay ibn Ka'b jome masjidi (Qoraqalpoq)",
+    "lat": 41.288,
+    "lon": 69.67,
+    "alt": [
+      "ubay",
+      "qoraqalpoq masjid"
+    ]
+  },
+  {
+    "name": "Nevich jome masjidi",
+    "lat": 41.325,
+    "lon": 69.6955,
+    "alt": [
+      "nevich masjid"
+    ]
+  },
+  {
+    "name": "Sirli jome masjidi",
+    "lat": 41.2948,
+    "lon": 69.674
+  },
+  {
+    "name": "Bobo Mochin jome masjidi",
+    "lat": 41.2945,
+    "lon": 69.6735,
+    "alt": [
+      "bobo mochin"
+    ]
+  },
+  {
+    "name": "Zarkent masjidi",
+    "lat": 41.305,
+    "lon": 69.71,
+    "alt": [
+      "zarkent masjid"
+    ]
+  },
+  {
+    "name": "Changi masjidi",
+    "lat": 41.308,
+    "lon": 69.7,
+    "alt": [
+      "changi masjid"
+    ]
+  },
+  {
+    "name": "Chinorli masjidi",
+    "lat": 41.285,
+    "lon": 69.665,
+    "alt": [
+      "chinorli masjid"
+    ]
+  },
+  {
+    "name": "Qo'rg'ontepa masjidi",
+    "lat": 41.2905,
+    "lon": 69.661,
+    "alt": [
+      "qorgontepa masjid"
+    ]
+  },
+  {
+    "name": "Beshqizilsoy masjidi",
+    "lat": 41.33,
+    "lon": 69.68,
+    "alt": [
+      "beshqizilsoy masjid"
+    ]
+  },
+  {
+    "name": "Buloq Boshi masjidi",
+    "lat": 41.302,
+    "lon": 69.688,
+    "alt": [
+      "buloq boshi masjid",
+      "buloqboshi"
+    ]
+  },
+  {
+    "name": "Mozor ho'ja masjidi",
+    "lat": 41.296,
+    "lon": 69.669,
+    "alt": [
+      "mozorxoja",
+      "mozor hoja"
+    ]
+  },
+  {
+    "name": "Kul Teppa masjidi",
+    "lat": 41.2935,
+    "lon": 69.6645,
+    "alt": [
+      "kul teppa",
+      "kulteppa"
+    ]
+  },
+  {
+    "name": "Oqtosh mahallasi",
+    "lat": 41.292,
+    "lon": 69.668
+  },
+  {
+    "name": "Guliston mahallasi",
+    "lat": 41.2955,
+    "lon": 69.681
+  },
+  {
+    "name": "Navro'z mahallasi",
+    "lat": 41.297,
+    "lon": 69.672
+  },
+  {
+    "name": "Tinchlik mahallasi",
+    "lat": 41.291,
+    "lon": 69.675
+  },
+  {
+    "name": "Do'stlik mahallasi",
+    "lat": 41.2965,
+    "lon": 69.669
+  },
+  {
+    "name": "Yangi hayot mahallasi",
+    "lat": 41.298,
+    "lon": 69.677
+  },
+  {
+    "name": "Bog'bon mahallasi",
+    "lat": 41.289,
+    "lon": 69.672
+  },
+  {
+    "name": "Mustaqillik mahallasi",
+    "lat": 41.2945,
+    "lon": 69.674
+  },
+  {
+    "name": "Istiqlol mahallasi",
+    "lat": 41.2975,
+    "lon": 69.668
+  },
+  {
+    "name": "Bunyodkor mahallasi",
+    "lat": 41.2905,
+    "lon": 69.671
+  },
+  {
+    "name": "Mehnat mahallasi",
+    "lat": 41.2985,
+    "lon": 69.68
+  },
+  {
+    "name": "Parkent Yangi tuman",
+    "lat": 41.2998,
+    "lon": 69.682,
+    "alt": [
+      "yangi tuman"
+    ]
+  },
+  {
+    "name": "Beshkapa mahallasi",
+    "lat": 41.294,
+    "lon": 69.676,
+    "alt": [
+      "beshkapa"
+    ]
+  },
+  {
+    "name": "Chashma mahallasi (Kumushkon)",
+    "lat": 41.341,
+    "lon": 69.753,
+    "alt": [
+      "chashma"
+    ]
+  },
+  {
+    "name": "Qo'lichi mahallasi",
+    "lat": 41.293,
+    "lon": 69.6695,
+    "alt": [
+      "qolichi",
+      "qo'lichi",
+      "kulichi"
+    ]
+  },
+  {
+    "name": "Buloq Boshi mahallasi",
+    "lat": 41.302,
+    "lon": 69.688,
+    "alt": [
+      "buloqboshi",
+      "buloq boshi",
+      "bulok boshi"
+    ]
+  },
+  {
+    "name": "Mozor ho'ja mahallasi",
+    "lat": 41.296,
+    "lon": 69.669,
+    "alt": [
+      "mozorxoja",
+      "mozor hoja",
+      "mozorho'ja"
+    ]
+  },
+  {
+    "name": "Kul Teppa (Ko'l Teppa)",
+    "lat": 41.2935,
+    "lon": 69.6645,
+    "alt": [
+      "kul teppa",
+      "kulteppa",
+      "ko'l teppa",
+      "kolteppa"
+    ]
+  },
+  {
+    "name": "Go'stanpit",
+    "lat": 41.2925,
+    "lon": 69.6635,
+    "alt": [
+      "gostanpit",
+      "go'stanpit",
+      "gostandpit"
+    ]
+  },
+  {
+    "name": "ATP hududi (Avto transport)",
+    "lat": 41.292,
+    "lon": 69.665,
+    "alt": [
+      "atp",
+      "avto transport",
+      "avtopark",
+      "avtobus parki"
+    ]
+  },
+  {
+    "name": "A. Navoiy ko'chasi (Parkent)",
+    "lat": 41.295,
+    "lon": 69.676,
+    "alt": [
+      "navoiy ko'cha",
+      "navoiy"
+    ]
+  },
+  {
+    "name": "Mustaqillik ko'chasi (Parkent)",
+    "lat": 41.2945,
+    "lon": 69.675
+  },
+  {
+    "name": "Amir Temur ko'chasi (Parkent)",
+    "lat": 41.294,
+    "lon": 69.673,
+    "alt": [
+      "temur ko'cha"
+    ]
+  },
+  {
+    "name": "Parkent-Toshkent yo'li",
+    "lat": 41.29,
+    "lon": 69.64,
+    "alt": [
+      "toshkent yol",
+      "magistral"
+    ]
+  },
+  {
+    "name": "Parkent-Chimgan yo'li",
+    "lat": 41.31,
+    "lon": 69.71,
+    "alt": [
+      "chimgan yol"
+    ]
+  },
+  {
+    "name": "Bozor ko'chasi (Parkent)",
+    "lat": 41.2948,
+    "lon": 69.6768
+  },
+  {
+    "name": "Olmazor ko'chasi (Parkent)",
+    "lat": 41.293,
+    "lon": 69.67
+  },
+  {
+    "name": "Chamanzor ko'chasi (Parkent)",
+    "lat": 41.2952,
+    "lon": 69.6765
+  },
+  {
+    "name": "Gulbog' ko'chasi (Parkent)",
+    "lat": 41.2955,
+    "lon": 69.6775
+  },
+  {
+    "name": "Chinor ko'chasi (Zarkent)",
+    "lat": 41.305,
+    "lon": 69.7095
+  },
+  {
+    "name": "P. Mumin ko'chasi (Qoraqalpoq)",
+    "lat": 41.2885,
+    "lon": 69.6705
+  },
+  {
+    "name": "Yoshlik ko'chasi (Qoraqalpoq)",
+    "lat": 41.2888,
+    "lon": 69.6708
+  },
+  {
+    "name": "Istiklol ko'chasi (Samsarak)",
+    "lat": 41.305,
+    "lon": 69.69
+  },
+  {
+    "name": "Intizor ko'chasi (Shampan)",
+    "lat": 41.3,
+    "lon": 69.685
+  },
+  {
+    "name": "Soy sohili ko'chasi (Zarkent)",
+    "lat": 41.3055,
+    "lon": 69.7108
+  },
+  {
+    "name": "Terakzor ko'chasi (Beshqizilsoy)",
+    "lat": 41.3305,
+    "lon": 69.681
+  },
+  {
+    "name": "Namdanak ko'chasi (Changi)",
+    "lat": 41.3085,
+    "lon": 69.7005
+  },
+  {
+    "name": "Bekhizot ko'chasi (Parkent)",
+    "lat": 41.2935,
+    "lon": 69.671
+  },
+  {
+    "name": "Kurgancha ko'chasi (Boyqozon)",
+    "lat": 41.29,
+    "lon": 69.6655
+  },
+  {
+    "name": "Kushtegirmon ko'chasi (Chinorli)",
+    "lat": 41.2855,
+    "lon": 69.6655
+  },
+  {
+    "name": "Bog'ishamol ko'chasi (Parkent)",
+    "lat": 41.2965,
+    "lon": 69.679
+  },
+  {
+    "name": "Parkent bozori (dehqon bozor)",
+    "lat": 41.295,
+    "lon": 69.677,
+    "alt": [
+      "bozor",
+      "dehqon bozor",
+      "rynok"
+    ]
+  },
+  {
+    "name": "Parkent kichik bozor",
+    "lat": 41.2948,
+    "lon": 69.6765,
+    "alt": [
+      "kichik bozor"
+    ]
+  },
+  {
+    "name": "Parkent supermarket",
+    "lat": 41.2949,
+    "lon": 69.6758,
+    "alt": [
+      "supermarket",
+      "univermag"
+    ]
+  },
+  {
+    "name": "Parkent non do'koni",
+    "lat": 41.2947,
+    "lon": 69.6752,
+    "alt": [
+      "non",
+      "nonvoy",
+      "pekarniya"
+    ]
+  },
+  {
+    "name": "Parkent go'sht do'koni",
+    "lat": 41.2951,
+    "lon": 69.6773,
+    "alt": [
+      "go'sht",
+      "qassoblik",
+      "myaso"
+    ]
+  },
+  {
+    "name": "Parkent qurilish do'koni",
+    "lat": 41.2935,
+    "lon": 69.6715,
+    "alt": [
+      "qurilish",
+      "stroy",
+      "material"
+    ]
+  },
+  {
+    "name": "Parkent kiyim bozori",
+    "lat": 41.2952,
+    "lon": 69.6775,
+    "alt": [
+      "kiyim",
+      "odezhda"
+    ]
+  },
+  {
+    "name": "Parkent meva-sabzavot bozori",
+    "lat": 41.295,
+    "lon": 69.6772,
+    "alt": [
+      "meva",
+      "sabzavot",
+      "ovoshi"
+    ]
+  },
+  {
+    "name": "Parkent elektr jihozlar do'koni",
+    "lat": 41.2946,
+    "lon": 69.6758,
+    "alt": [
+      "elektr",
+      "texnika"
+    ]
+  },
+  {
+    "name": "Parkent mebel do'koni",
+    "lat": 41.2938,
+    "lon": 69.6725,
+    "alt": [
+      "mebel",
+      "divan",
+      "krovat"
+    ]
+  },
+  {
+    "name": "So'qoq bozori",
+    "lat": 41.311,
+    "lon": 69.7215,
+    "alt": [
+      "sukkok bozor",
+      "sukok bozor"
+    ]
+  },
+  {
+    "name": "Parkent banklar (bank filiali)",
+    "lat": 41.2946,
+    "lon": 69.6748,
+    "alt": [
+      "bank"
+    ]
+  },
+  {
+    "name": "Mikrokreditbank Parkent filiali",
+    "lat": 41.295,
+    "lon": 69.676,
+    "alt": [
+      "mikrokreditbank"
+    ]
+  },
+  {
+    "name": "Asaka Bank Parkent",
+    "lat": 41.2955,
+    "lon": 69.6775,
+    "alt": [
+      "asaka bank",
+      "asaka"
+    ]
+  },
+  {
+    "name": "Xalq Banki Parkent (bankomat)",
+    "lat": 41.2948,
+    "lon": 69.6755,
+    "alt": [
+      "xalq bank",
+      "bankomat"
+    ]
+  },
+  {
+    "name": "Ipoteka Bank Parkent",
+    "lat": 41.2943,
+    "lon": 69.6742,
+    "alt": [
+      "ipoteka",
+      "ipoteka bank"
+    ]
+  },
+  {
+    "name": "Kapitalbank Parkent",
+    "lat": 41.294,
+    "lon": 69.6738,
+    "alt": [
+      "kapitalbank"
+    ]
+  },
+  {
+    "name": "Agrobank Parkent",
+    "lat": 41.2945,
+    "lon": 69.6745,
+    "alt": [
+      "agrobank"
+    ]
+  },
+  {
+    "name": "Yulduz to'yxona",
+    "lat": 41.296,
+    "lon": 69.681,
+    "alt": [
+      "yulduz",
+      "yulduz toyxona",
+      "yulduz zal"
+    ]
+  },
+  {
+    "name": "Dilshod ota to'yxona",
+    "lat": 41.2935,
+    "lon": 69.67,
+    "alt": [
+      "dilshod ota",
+      "dilshod toyxona",
+      "dilshod"
+    ]
+  },
+  {
+    "name": "Parkent markaziy to'yxona",
+    "lat": 41.2952,
+    "lon": 69.678,
+    "alt": [
+      "markaziy toyxona",
+      "katta toyxona"
+    ]
+  },
+  {
+    "name": "Oqsaroy to'yxona",
+    "lat": 41.294,
+    "lon": 69.673,
+    "alt": [
+      "oqsaroy",
+      "oq saroy"
+    ]
+  },
+  {
+    "name": "Baraka to'yxona",
+    "lat": 41.2955,
+    "lon": 69.6795,
+    "alt": [
+      "baraka toyxona",
+      "baraka"
+    ]
+  },
+  {
+    "name": "Gulshan to'yxona",
+    "lat": 41.2965,
+    "lon": 69.672,
+    "alt": [
+      "gulshan"
+    ]
+  },
+  {
+    "name": "Navro'z to'yxona",
+    "lat": 41.2975,
+    "lon": 69.674,
+    "alt": [
+      "navroz toyxona"
+    ]
+  },
+  {
+    "name": "Shodlik to'yxona",
+    "lat": 41.293,
+    "lon": 69.669,
+    "alt": [
+      "shodlik"
+    ]
+  },
+  {
+    "name": "Sarvinoz to'yxona",
+    "lat": 41.292,
+    "lon": 69.667,
+    "alt": [
+      "sarvinoz"
+    ]
+  },
+  {
+    "name": "Bunyod to'yxona",
+    "lat": 41.2985,
+    "lon": 69.681,
+    "alt": [
+      "bunyod"
+    ]
+  },
+  {
+    "name": "Chinor to'yxona (Changi)",
+    "lat": 41.308,
+    "lon": 69.7005,
+    "alt": [
+      "chinor toyxona changi"
+    ]
+  },
+  {
+    "name": "Zarkent to'yxona",
+    "lat": 41.3055,
+    "lon": 69.71,
+    "alt": [
+      "zarkent toyxona"
+    ]
+  },
+  {
+    "name": "Chinor Cafe (So'qoq)",
+    "lat": 41.3108,
+    "lon": 69.721,
+    "alt": [
+      "chinor kafe",
+      "soqoq kafe"
+    ]
+  },
+  {
+    "name": "Degrez Cafe (So'qoq)",
+    "lat": 41.3112,
+    "lon": 69.722,
+    "alt": [
+      "degrez"
+    ]
+  },
+  {
+    "name": "Favorra Cafe (So'qoq)",
+    "lat": 41.3115,
+    "lon": 69.7225,
+    "alt": [
+      "favorra"
+    ]
+  },
+  {
+    "name": "Parkent choyxona (markaziy)",
+    "lat": 41.295,
+    "lon": 69.6775,
+    "alt": [
+      "choyxona",
+      "choyhona"
+    ]
+  },
+  {
+    "name": "Parkent kabob do'koni",
+    "lat": 41.2948,
+    "lon": 69.677,
+    "alt": [
+      "kabob",
+      "shashlik",
+      "mangal"
+    ]
+  },
+  {
+    "name": "Parkent somsa do'koni",
+    "lat": 41.2952,
+    "lon": 69.6772,
+    "alt": [
+      "somsa",
+      "tandir somsa"
+    ]
+  },
+  {
+    "name": "Parkent osh markazi",
+    "lat": 41.2946,
+    "lon": 69.6765,
+    "alt": [
+      "osh",
+      "palov",
+      "osh markazi"
+    ]
+  },
+  {
+    "name": "So'qoq kabob (mashhur)",
+    "lat": 41.311,
+    "lon": 69.7218,
+    "alt": [
+      "sukkok kabob",
+      "sukok shashlik"
+    ]
+  },
+  {
+    "name": "So'qoq somsa (ko'k somsa)",
+    "lat": 41.3108,
+    "lon": 69.7215,
+    "alt": [
+      "kok somsa",
+      "mador somsa",
+      "sukok somsa"
+    ]
+  },
+  {
+    "name": "Kumushkon choyxona",
+    "lat": 41.34,
+    "lon": 69.7515,
+    "alt": [
+      "kumushkon choyhona"
+    ]
+  },
+  {
+    "name": "Hazrati Ali Buva oshxonasi",
+    "lat": 41.3402,
+    "lon": 69.7522,
+    "alt": [
+      "ziyoratgoh oshxona"
+    ]
+  },
+  {
+    "name": "Parkent avtovokzal",
+    "lat": 41.293,
+    "lon": 69.671,
+    "alt": [
+      "avtovokzal",
+      "avtobus stansiya",
+      "vokzal"
+    ]
+  },
+  {
+    "name": "Parkent yoqilg'i shahobchasi (benzin)",
+    "lat": 41.292,
+    "lon": 69.666,
+    "alt": [
+      "benzin",
+      "zapravka",
+      "yoqilgi",
+      "gaz"
+    ]
+  },
+  {
+    "name": "Parkent yoqilg'i 2 (Toshkent yo'li)",
+    "lat": 41.29,
+    "lon": 69.645,
+    "alt": [
+      "benzin toshkent yol"
+    ]
+  },
+  {
+    "name": "Parkent avtoyu'vish",
+    "lat": 41.2925,
+    "lon": 69.6665,
+    "alt": [
+      "avtomoyka",
+      "moyka",
+      "yuvish"
+    ]
+  },
+  {
+    "name": "Parkent avto ta'mirlash",
+    "lat": 41.2922,
+    "lon": 69.6658,
+    "alt": [
+      "avto tamir",
+      "sto",
+      "remont"
+    ]
+  },
+  {
+    "name": "Parkent shinaxona",
+    "lat": 41.2918,
+    "lon": 69.6655,
+    "alt": [
+      "shinaxona",
+      "balansirovka",
+      "shina"
+    ]
+  },
+  {
+    "name": "Parkent marshrutka bekati",
+    "lat": 41.2932,
+    "lon": 69.6715,
+    "alt": [
+      "marshrutka",
+      "bekat"
+    ]
+  },
+  {
+    "name": "221-avtobus Toshkent-Parkent",
+    "lat": 41.293,
+    "lon": 69.671,
+    "alt": [
+      "221 avtobus"
+    ]
+  },
+  {
+    "name": "338-avtobus Toshkent-Parkent",
+    "lat": 41.293,
+    "lon": 69.671,
+    "alt": [
+      "338 avtobus"
+    ]
+  },
+  {
+    "name": "Parkent stadion",
+    "lat": 41.2935,
+    "lon": 69.679,
+    "alt": [
+      "stadion",
+      "futbol maydoni"
+    ]
+  },
+  {
+    "name": "Parkent madaniyat uyi",
+    "lat": 41.2944,
+    "lon": 69.6745,
+    "alt": [
+      "madaniyat",
+      "dom kultury"
+    ]
+  },
+  {
+    "name": "Parkent pochta",
+    "lat": 41.2942,
+    "lon": 69.6738,
+    "alt": [
+      "pochta",
+      "pochtamt"
+    ]
+  },
+  {
+    "name": "Parkent ijod uyi",
+    "lat": 41.2944,
+    "lon": 69.6743,
+    "alt": [
+      "ijod",
+      "ijodiy uy"
+    ]
+  },
+  {
+    "name": "Parkent kutubxona",
+    "lat": 41.2946,
+    "lon": 69.674,
+    "alt": [
+      "kutubxona",
+      "biblioteka"
+    ]
+  },
+  {
+    "name": "Parkent sport zali",
+    "lat": 41.2938,
+    "lon": 69.6785,
+    "alt": [
+      "sport zal",
+      "trenirovka"
+    ]
+  },
+  {
+    "name": "Parkent bolalar sport maydoni",
+    "lat": 41.294,
+    "lon": 69.6792,
+    "alt": [
+      "bolalar sport"
+    ]
+  },
+  {
+    "name": "Parkent suzish havzasi",
+    "lat": 41.2937,
+    "lon": 69.6788,
+    "alt": [
+      "basseyn",
+      "suzish"
+    ]
+  },
+  {
+    "name": "Quyosh shaharchasi",
+    "lat": 41.315,
+    "lon": 69.735,
+    "alt": [
+      "quyosh",
+      "kuyosh",
+      "gelios"
+    ]
+  },
+  {
+    "name": "Qo'rg'ontepa shaharchasi",
+    "lat": 41.29,
+    "lon": 69.661,
+    "alt": [
+      "qorgontepa",
+      "kurgantepa",
+      "qo'rgontepa"
+    ]
+  },
+  {
+    "name": "Chinorli shaharchasi",
+    "lat": 41.285,
+    "lon": 69.665,
+    "alt": [
+      "chinorli"
+    ]
+  },
+  {
+    "name": "Zarkent",
+    "lat": 41.305,
+    "lon": 69.71,
+    "alt": [
+      "zarkon",
+      "zarankat"
+    ]
+  },
+  {
+    "name": "So'qoq (Sukok)",
+    "lat": 41.31,
+    "lon": 69.72,
+    "alt": [
+      "sukkok",
+      "sukok",
+      "soqoq",
+      "suqoq"
+    ]
+  },
+  {
+    "name": "Changi",
+    "lat": 41.308,
+    "lon": 69.7,
+    "alt": [
+      "changi qishloq"
+    ]
+  },
+  {
+    "name": "Kumushkon",
+    "lat": 41.34,
+    "lon": 69.75,
+    "alt": [
+      "kumushkan",
+      "kumishkon"
+    ]
+  },
+  {
+    "name": "Nomdanak (Namadanak)",
+    "lat": 41.31,
+    "lon": 69.715,
+    "alt": [
+      "nomdanak",
+      "namadanak",
+      "namadvonak"
+    ]
+  },
+  {
+    "name": "Xisarak (Hisarak)",
+    "lat": 41.32,
+    "lon": 69.73,
+    "alt": [
+      "xisarak",
+      "hisarak"
+    ]
+  },
+  {
+    "name": "Boshqizilsoy",
+    "lat": 41.33,
+    "lon": 69.68,
+    "alt": [
+      "boshkizilsoy",
+      "bashkizylsay"
+    ]
+  },
+  {
+    "name": "Qoraqalpoq qishlog'i",
+    "lat": 41.288,
+    "lon": 69.67,
+    "alt": [
+      "qoraqalpoq",
+      "karakalpak"
+    ]
+  },
+  {
+    "name": "Bo'ston (Chotqol)",
+    "lat": 41.3,
+    "lon": 69.66,
+    "alt": [
+      "buston",
+      "chotqol",
+      "bo'ston"
+    ]
+  },
+  {
+    "name": "Qorabog' qishlog'i",
+    "lat": 41.28,
+    "lon": 69.65,
+    "alt": [
+      "qorabog",
+      "karabag"
+    ]
+  },
+  {
+    "name": "Boyqozon",
+    "lat": 41.29,
+    "lon": 69.665,
+    "alt": [
+      "boyqozon",
+      "baykazan"
+    ]
+  },
+  {
+    "name": "Gulbog' qishlog'i",
+    "lat": 41.2955,
+    "lon": 69.6775,
+    "alt": [
+      "gulbog"
+    ]
+  },
+  {
+    "name": "Yoshlik qishlog'i",
+    "lat": 41.3,
+    "lon": 69.67,
+    "alt": [
+      "yoshlik"
+    ]
+  },
+  {
+    "name": "Samsarak qishlog'i",
+    "lat": 41.305,
+    "lon": 69.69,
+    "alt": [
+      "samsarak"
+    ]
+  },
+  {
+    "name": "Shampan qishlog'i",
+    "lat": 41.3,
+    "lon": 69.685,
+    "alt": [
+      "shampan"
+    ]
+  },
+  {
+    "name": "Nevich qishlog'i",
+    "lat": 41.325,
+    "lon": 69.695,
+    "alt": [
+      "nevich",
+      "nevic"
+    ]
+  },
+  {
+    "name": "Jilma qishlog'i",
+    "lat": 41.315,
+    "lon": 69.705,
+    "alt": [
+      "jilma"
+    ]
+  },
+  {
+    "name": "Qirg'izovul qishlog'i",
+    "lat": 41.31,
+    "lon": 69.685,
+    "alt": [
+      "qirgizovul",
+      "kirgizovul"
+    ]
+  },
+  {
+    "name": "Qirg'iz qishlog'i",
+    "lat": 41.335,
+    "lon": 69.745,
+    "alt": [
+      "qirgiz"
+    ]
+  },
+  {
+    "name": "Beshqizilsoy qishlog'i",
+    "lat": 41.33,
+    "lon": 69.68,
+    "alt": [
+      "beshqizilsoy"
+    ]
+  },
+  {
+    "name": "Humson",
+    "lat": 41.27,
+    "lon": 69.63,
+    "alt": [
+      "xumson"
+    ]
+  },
+  {
+    "name": "To'raqo'rg'on",
+    "lat": 41.255,
+    "lon": 69.59,
+    "alt": [
+      "turaqorgon",
+      "toraqorgon"
+    ]
+  },
+  {
+    "name": "Kaptarxona",
+    "lat": 41.335,
+    "lon": 69.725,
+    "alt": [
+      "kaptarxona"
+    ]
+  },
+  {
+    "name": "O'rtasaroy",
+    "lat": 41.285,
+    "lon": 69.66,
+    "alt": [
+      "ortasaroy"
+    ]
+  },
+  {
+    "name": "Zangiota qishlog'i (Parkent)",
+    "lat": 41.26,
+    "lon": 69.61,
+    "alt": [
+      "zangiota"
+    ]
+  },
+  {
+    "name": "Oqtosh qishlog'i",
+    "lat": 41.288,
+    "lon": 69.655,
+    "alt": [
+      "oqtosh"
+    ]
+  },
+  {
+    "name": "Soyqon",
+    "lat": 41.315,
+    "lon": 69.73,
+    "alt": [
+      "soyqon",
+      "saykhan"
+    ]
+  },
+  {
+    "name": "Obirahmot",
+    "lat": 41.325,
+    "lon": 69.715,
+    "alt": [
+      "obirahmot",
+      "obirahmat"
+    ]
+  },
+  {
+    "name": "Chinor qishlog'i",
+    "lat": 41.3,
+    "lon": 69.7,
+    "alt": [
+      "chinor"
+    ]
+  },
+  {
+    "name": "Chotqol qishlog'i",
+    "lat": 41.35,
+    "lon": 69.76,
+    "alt": [
+      "chotqol",
+      "chatkal"
+    ]
+  },
+  {
+    "name": "Qo'lichi",
+    "lat": 41.293,
+    "lon": 69.6695,
+    "alt": [
+      "qolichi",
+      "kulichi",
+      "qo'lichi"
+    ]
+  },
+  {
+    "name": "Buloq Boshi",
+    "lat": 41.302,
+    "lon": 69.688,
+    "alt": [
+      "buloqboshi",
+      "bulok boshi",
+      "buloq boshi"
+    ]
+  },
+  {
+    "name": "Mozor ho'ja",
+    "lat": 41.296,
+    "lon": 69.669,
+    "alt": [
+      "mozorxoja",
+      "mozor hoja",
+      "mozorho'ja",
+      "mozor xoja"
+    ]
+  },
+  {
+    "name": "Go'stanpit",
+    "lat": 41.2925,
+    "lon": 69.6635,
+    "alt": [
+      "gostanpit",
+      "go'stanpit",
+      "gostandpit",
+      "gostanpid"
+    ]
+  },
+  {
+    "name": "Kul Teppa (Ko'l Teppa)",
+    "lat": 41.2935,
+    "lon": 69.6645,
+    "alt": [
+      "kulteppa",
+      "kul teppa",
+      "kolteppa",
+      "ko'l teppa"
+    ]
+  },
+  {
+    "name": "ATP (Avto transport parki)",
+    "lat": 41.292,
+    "lon": 69.665,
+    "alt": [
+      "atp",
+      "avtopark",
+      "avto transport parki"
+    ]
+  },
+  {
+    "name": "Fizika-Quyosh instituti (Quyosh pechi)",
+    "lat": 41.315,
+    "lon": 69.735,
+    "alt": [
+      "quyosh pechi",
+      "solar furnace",
+      "geliocomplex",
+      "gelios"
+    ]
+  },
+  {
+    "name": "Chateau Hamkor (vino zavodi)",
+    "lat": 41.285,
+    "lon": 69.6655,
+    "alt": [
+      "shato",
+      "vino",
+      "shampanskiy",
+      "vinodeliya"
+    ]
+  },
+  {
+    "name": "Parkent vino zavodi",
+    "lat": 41.2945,
+    "lon": 69.675,
+    "alt": [
+      "vino zavod",
+      "vinzavod"
+    ]
+  },
+  {
+    "name": "Parkent non zavodi",
+    "lat": 41.294,
+    "lon": 69.674,
+    "alt": [
+      "non zavod",
+      "xleb zavod"
+    ]
+  },
+  {
+    "name": "Parkent g'isht zavodi",
+    "lat": 41.291,
+    "lon": 69.668,
+    "alt": [
+      "gisht",
+      "kirpich zavod"
+    ]
+  },
+  {
+    "name": "Parkent tikuvchilik fabrikasi",
+    "lat": 41.293,
+    "lon": 69.672,
+    "alt": [
+      "tikuvchilik",
+      "shvey fabrika"
+    ]
+  },
+  {
+    "name": "AZR Textile Parkent (Qoraqalpoq)",
+    "lat": 41.288,
+    "lon": 69.67,
+    "alt": [
+      "azr textile",
+      "tekstil"
+    ]
+  },
+  {
+    "name": "Nevich tajriba bazasi (Koinot)",
+    "lat": 41.325,
+    "lon": 69.6955,
+    "alt": [
+      "nevich baza",
+      "koinot"
+    ]
+  },
+  {
+    "name": "BER-ARD meva saqlash",
+    "lat": 41.294,
+    "lon": 69.6735,
+    "alt": [
+      "meva saqlash",
+      "xolodilnik"
+    ]
+  },
+  {
+    "name": "Kumushkon Family Resort",
+    "lat": 41.34,
+    "lon": 69.75,
+    "alt": [
+      "kumushkon resort",
+      "family resort"
+    ]
+  },
+  {
+    "name": "Edelweiss Hotel (Kumushkon)",
+    "lat": 41.335,
+    "lon": 69.745,
+    "alt": [
+      "edelveyes",
+      "edelweiss",
+      "mehmonxona"
+    ]
+  },
+  {
+    "name": "Rano Eco Village (Nomdanak)",
+    "lat": 41.31,
+    "lon": 69.715,
+    "alt": [
+      "rano",
+      "eco village",
+      "ekoqishloq"
+    ]
+  },
+  {
+    "name": "So'qoq dam olish uyi",
+    "lat": 41.311,
+    "lon": 69.721,
+    "alt": [
+      "sukkok dam olish",
+      "sukok sanatoriy"
+    ]
+  },
+  {
+    "name": "Zarkent sanatoriyasi",
+    "lat": 41.3055,
+    "lon": 69.711,
+    "alt": [
+      "zarkent sanatoriy"
+    ]
+  },
+  {
+    "name": "So'qoq sanatoriyasi (Sukok)",
+    "lat": 41.3115,
+    "lon": 69.722,
+    "alt": [
+      "sukok sanatoriy",
+      "sukkok sanatoriy"
+    ]
+  },
+  {
+    "name": "Qizilsoy dam olish maskani",
+    "lat": 41.33,
+    "lon": 69.681,
+    "alt": [
+      "qizilsoy"
+    ]
+  },
+  {
+    "name": "Sumcha dam olish maskani",
+    "lat": 41.32,
+    "lon": 69.71,
+    "alt": [
+      "sumcha"
+    ]
+  },
+  {
+    "name": "Yusufxona dam olish maskani",
+    "lat": 41.33,
+    "lon": 69.74,
+    "alt": [
+      "yusufxona"
+    ]
+  },
+  {
+    "name": "Hazrati Ali Buva ziyoratgohi (Kumushkon)",
+    "lat": 41.34,
+    "lon": 69.752,
+    "alt": [
+      "hazrat ali",
+      "ali buva",
+      "kumushkon ziyorat",
+      "avliyo"
+    ]
+  },
+  {
+    "name": "Qirg'iztepa ziyoratgohi",
+    "lat": 41.31,
+    "lon": 69.685,
+    "alt": [
+      "qirgiztepa"
+    ]
+  },
+  {
+    "name": "Zarkent-ota bulog'i (muqaddas)",
+    "lat": 41.305,
+    "lon": 69.712,
+    "alt": [
+      "zarkent ota",
+      "muqaddas buloq"
+    ]
+  },
+  {
+    "name": "Parkentsoy daryosi",
+    "lat": 41.3,
+    "lon": 69.69,
+    "alt": [
+      "parkentsoy",
+      "daryo"
+    ]
+  },
+  {
+    "name": "Boshqizilsoy daryosi",
+    "lat": 41.33,
+    "lon": 69.68,
+    "alt": [
+      "boshkizilsoy daryo"
+    ]
+  },
+  {
+    "name": "Oqtosh daryosi",
+    "lat": 41.305,
+    "lon": 69.69,
+    "alt": [
+      "oqtosh daryo"
+    ]
+  },
+  {
+    "name": "Oqsoqotasoy daryosi",
+    "lat": 41.345,
+    "lon": 69.75,
+    "alt": [
+      "aksakata"
+    ]
+  },
+  {
+    "name": "Zarkent g'ori (102m)",
+    "lat": 41.3055,
+    "lon": 69.712,
+    "alt": [
+      "zarkent gori",
+      "peshera"
+    ]
+  },
+  {
+    "name": "Kuylovchi g'or (So'qoq)",
+    "lat": 41.32,
+    "lon": 69.73,
+    "alt": [
+      "kuylovchi gor",
+      "singing cave"
+    ]
+  },
+  {
+    "name": "Odamtosh (tosh odam)",
+    "lat": 41.32,
+    "lon": 69.73,
+    "alt": [
+      "odamtosh",
+      "adam tosh"
+    ]
+  },
+  {
+    "name": "So'qoq o'rmon xo'jaligi",
+    "lat": 41.312,
+    "lon": 69.725,
+    "alt": [
+      "ormon",
+      "qayin ormon",
+      "les"
+    ]
+  },
+  {
+    "name": "Charvak suv ombori",
+    "lat": 41.61,
+    "lon": 70.04,
+    "alt": [
+      "charvak",
+      "chorvoq"
+    ]
+  },
+  {
+    "name": "Chimgan tog'i",
+    "lat": 41.56,
+    "lon": 70.01,
+    "alt": [
+      "chimgan",
+      "chimgon"
+    ]
+  },
+  {
+    "name": "Beldersoy",
+    "lat": 41.53,
+    "lon": 70.05,
+    "alt": [
+      "beldersay"
+    ]
+  },
+  {
+    "name": "Amirsoy tog' kurordi",
+    "lat": 41.58,
+    "lon": 70.02,
+    "alt": [
+      "amirsoy",
+      "lyji"
+    ]
+  },
+  {
+    "name": "Nanay",
+    "lat": 41.51,
+    "lon": 69.99
+  },
+  {
+    "name": "Chorvoq sohili",
+    "lat": 41.62,
+    "lon": 70.03,
+    "alt": [
+      "chorvoq",
+      "charvak plyaj"
+    ]
+  },
+  {
+    "name": "Zarkent Universal fermer xo'jaligi",
+    "lat": 41.305,
+    "lon": 69.71,
+    "alt": [
+      "zarkent fermer"
+    ]
+  },
+  {
+    "name": "Zarkent Ne'matlari fermer xo'jaligi",
+    "lat": 41.3055,
+    "lon": 69.7105,
+    "alt": [
+      "zarkent nematlari"
+    ]
+  },
+  {
+    "name": "So'qoq-Sut Bulog'i fermer xo'jaligi",
+    "lat": 41.311,
+    "lon": 69.7215,
+    "alt": [
+      "soqoq sut"
+    ]
+  },
+  {
+    "name": "Bo'ston Yanginur fermer xo'jaligi",
+    "lat": 41.3,
+    "lon": 69.6605,
+    "alt": [
+      "buston fermer"
+    ]
+  },
+  {
+    "name": "Aspariddin Ota fermer xo'jaligi (Boyqozon)",
+    "lat": 41.29,
+    "lon": 69.665
+  },
+  {
+    "name": "Toshkent shahri (markaz)",
+    "lat": 41.3111,
+    "lon": 69.2797,
+    "alt": [
+      "toshkent",
+      "tashkent"
+    ]
+  },
+  {
+    "name": "Sergeli (Toshkent)",
+    "lat": 41.2631,
+    "lon": 69.2048
+  },
+  {
+    "name": "Olmaliq shahri",
+    "lat": 40.8444,
+    "lon": 69.5972,
+    "alt": [
+      "olmaliq"
+    ]
+  },
+  {
+    "name": "Angren shahri",
+    "lat": 41.0167,
+    "lon": 70.1439,
+    "alt": [
+      "angren"
+    ]
+  },
+  {
+    "name": "Ohangaron shahri",
+    "lat": 41.055,
+    "lon": 69.638,
+    "alt": [
+      "ohangaron",
+      "ahangaran"
+    ]
+  },
+  {
+    "name": "Chirchiq shahri",
+    "lat": 41.4689,
+    "lon": 69.5836,
+    "alt": [
+      "chirchiq"
+    ]
+  },
+  {
+    "name": "G'azalkent",
+    "lat": 41.55,
+    "lon": 69.77,
+    "alt": [
+      "gazalkent"
+    ]
+  },
+  {
+    "name": "Kibray tumani",
+    "lat": 41.36,
+    "lon": 69.42,
+    "alt": [
+      "kibray"
+    ]
+  },
+  {
+    "name": "Zangiota tumani",
+    "lat": 41.24,
+    "lon": 69.21,
+    "alt": [
+      "zangiota"
+    ]
+  },
+  {
+    "name": "Xo'jakent",
+    "lat": 41.345,
+    "lon": 69.735,
+    "alt": [
+      "xojakent",
+      "hodjakent"
+    ]
+  },
+  {
+    "name": "Bo'stonliq tumani",
+    "lat": 41.5,
+    "lon": 69.85,
+    "alt": [
+      "bostonliq",
+      "bustonliq"
+    ]
+  },
+  {
+    "name": "Nurafshon shahri",
+    "lat": 41.05,
+    "lon": 69.32,
+    "alt": [
+      "nurafshon"
+    ]
+  },
+  {
+    "name": "Bekobod shahri",
+    "lat": 40.22,
+    "lon": 69.27,
+    "alt": [
+      "bekobod",
+      "bekabad"
+    ]
+  }
+]
