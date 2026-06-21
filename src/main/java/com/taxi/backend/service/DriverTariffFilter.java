@@ -129,6 +129,11 @@ public final class DriverTariffFilter {
     }
 
     private static String normalize(String value) {
-        return value == null ? "" : value.trim().toUpperCase();
+        if (value == null) return "";
+        String n = value.trim().toUpperCase();
+        // Tarif qayta nomlandi (EKONOM -> STANDART). Eski 'EKONOM' tokenlari hali STANDART ga mos kelsin
+        // (backfilldan o'tib ketgan qatorlar + kelajakdagi nom o'zgarishlaridan himoya).
+        if (n.equals("EKONOM")) return "STANDART";
+        return n;
     }
 }

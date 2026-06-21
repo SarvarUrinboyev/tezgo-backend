@@ -83,7 +83,7 @@ public class Driver {
     private String driverCode;
 
     @Column(name = "accepted_tariffs")
-    private String acceptedTariffs = "EKONOM,DAMAS,BIZNES";
+    private String acceptedTariffs = "STANDART,DAMAS,BIZNES";
 
     /** A2 — Admin qo'lda BERGAN tariflar (vergul bilan), mashina-modeli defaultidan TASHQARI.
      *  Effektiv eligibility = eligibleTariffs(carModel) ∪ tariffGrants. */

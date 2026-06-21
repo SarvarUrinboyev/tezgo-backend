@@ -40,7 +40,7 @@ public class DataInitializer implements CommandLineRunner {
         // Tariflar (agar bo'lmasa)
         if (tariffRepository.count() == 0) {
             Tariff ekonom = new Tariff();
-            ekonom.setName("EKONOM");
+            ekonom.setName("STANDART"); // kanonik nom (jonli DB tarif qatori STANDART deb nomlangan)
             ekonom.setBasePrice(750000L);    // 7 500 so'm boshlang'ich
             ekonom.setPricePerKm(250000L);   // 2 500 so'm/km
             ekonom.setPricePerMin(0L);

@@ -53,4 +53,15 @@ class DriverTariffGrantTest {
         Set<String> e = DriverTariffFilter.eligibleTariffs("Chevrolet Malibu 2", null);
         assertTrue(e.contains("KOMFORT"), "Malibu default KOMFORT grant'siz ham bo'lishi kerak");
     }
+
+    @Test
+    void legacyEkonom_matchesStandartOrder() {
+        // Deploy 3 (A2) — backfilldan o'tib ketgan/eski haydovchi hali 'EKONOM' tutsa ham,
+        // normalize() aliasi orqali STANDART buyurtmaga mos kelishi kerak (dispatch buzilmasin).
+        Driver d = new Driver();
+        d.setCarModel("Nexia");
+        d.setAcceptedTariffs("EKONOM,DAMAS");
+        assertTrue(DriverTariffFilter.accepts(d, "STANDART"),
+                "eski 'EKONOM' token STANDART buyurtmaga mos kelishi kerak (alias)");
+    }
 }
