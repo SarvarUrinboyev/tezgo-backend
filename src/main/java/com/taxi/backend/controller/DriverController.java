@@ -229,6 +229,16 @@ public class DriverController {
                 PageRequest.of(page, size, Sort.by("sentAt").descending())));
     }
 
+    /** A3 — Barcha aktiv tariflar + shu haydovchi uchun eligible/accepted bayroqlari (A2 grantlari bilan). */
+    @GetMapping("/tariffs")
+    public ResponseEntity<?> getDriverTariffs(@AuthenticationPrincipal User user) {
+        try {
+            return ResponseEntity.ok(driverService.getDriverTariffs(user));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     @PatchMapping("/tariffs")
     public ResponseEntity<?> updateTariffs(@AuthenticationPrincipal User user,
             @RequestBody Map<String, Object> body) {

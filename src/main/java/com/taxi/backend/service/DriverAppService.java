@@ -90,6 +90,37 @@ public class DriverAppService {
                 eligibleTariffs);
     }
 
+    /** A3 — Barcha aktiv tariflar + shu haydovchi uchun eligible/accepted bayroqlari (A2 grantlarini hisobga oladi). */
+    public List<Map<String, Object>> getDriverTariffs(User user) {
+        Driver driver = driverRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
+        java.util.Set<String> eligible =
+                DriverTariffFilter.eligibleTariffs(driver.getCarModel(), driver.getTariffGrants());
+        java.util.Set<String> accepted = new java.util.HashSet<>();
+        if (driver.getAcceptedTariffs() != null) {
+            for (String s : driver.getAcceptedTariffs().split(",")) {
+                String n = s.trim().toUpperCase();
+                if (!n.isBlank()) accepted.add(n);
+            }
+        }
+        return tariffRepository.findByIsActiveTrue().stream()
+                .map(t -> {
+                    String name = t.getName() == null ? "" : t.getName().trim().toUpperCase();
+                    boolean isEligible = eligible.contains(name);
+                    Map<String, Object> m = new java.util.LinkedHashMap<>();
+                    m.put("id", t.getId());
+                    m.put("name", t.getName());
+                    m.put("basePrice", t.getBasePrice());
+                    m.put("pricePerKm", t.getPricePerKm());
+                    m.put("pricePerMin", t.getPricePerMin());
+                    m.put("minPrice", t.getMinPrice());
+                    m.put("eligible", isEligible);
+                    m.put("accepted", isEligible && accepted.contains(name));
+                    return m;
+                })
+                .collect(Collectors.toList());
+    }
+
     /** Avtomobil ma'lumotlarini yangilash */
     @Transactional
     public Map<String, Object> updateProfile(User user, String carModel, String carNumber, String carColor, Integer carYear) {
