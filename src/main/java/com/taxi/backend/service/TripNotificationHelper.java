@@ -46,8 +46,10 @@ public class TripNotificationHelper {
     public void notifyNearbyDrivers(Trip trip) {
         double lat = trip.getFromLat() != null ? trip.getFromLat() : 0.0;
         double lon = trip.getFromLon() != null ? trip.getFromLon() : 0.0;
+        // Default = "STANDART" (jonli bazaviy tarif). Tarifsiz buyurtma (edge-case/stale client) o'lik
+        // "EKONOM" ga tushib tarif-gate'da YIQILMASIN ("0 notified" tuzog'i) — STANDART har qanday mashinaga mos.
         String tariffName = trip.getTariff() != null && trip.getTariff().getName() != null
-                ? trip.getTariff().getName().toUpperCase() : "EKONOM";
+                ? trip.getTariff().getName().toUpperCase() : "STANDART";
 
         log.info("[MATCHING] Buyurtma #{} uchun haydovchi qidirilmoqda (lat={}, lon={}, radius={}km, tariff={})",
                 trip.getId(), lat, lon, matchingRadiusKm, tariffName);
