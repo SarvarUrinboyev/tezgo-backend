@@ -51,6 +51,55 @@ public class SupportChatController {
         return ResponseEntity.ok(Map.of("count", supportChat.passengerUnreadCount(user.getId())));
     }
 
+    // ─── Haydovchi tomoni (DRIVER) — /api/driver/** -> SecurityConfig: DRIVER/ADMIN ──
+    @GetMapping("/api/driver/support")
+    public ResponseEntity<?> driverThread(@AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(Map.of("messages", supportChat.getThreadForDriver(user)));
+    }
+
+    @PostMapping("/api/driver/support")
+    public ResponseEntity<?> driverSend(@AuthenticationPrincipal User user,
+                                        @Valid @RequestBody ChatMessageRequest req) {
+        try {
+            return ResponseEntity.ok(supportChat.sendFromDriver(user, req.getText()));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+        }
+    }
+
+    @GetMapping("/api/driver/support/unread")
+    public ResponseEntity<?> driverMyUnread(@AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(Map.of("count", supportChat.driverUnreadCount(user.getId())));
+    }
+
+    // ─── Operator tomoni (HAYDOVCHI support) — /api/operator/** -> SecurityConfig: OPERATOR ──
+    // Admin support (/api/admin/**) ADMIN-only; operator panel OPERATOR roli — shu sababli alohida yo'l.
+    @GetMapping("/api/operator/support/driver-conversations")
+    public ResponseEntity<?> driverConversations() {
+        return ResponseEntity.ok(Map.of("conversations", supportChat.listDriverConversations()));
+    }
+
+    @GetMapping("/api/operator/support/driver-unread")
+    public ResponseEntity<?> driverInboxUnread() {
+        return ResponseEntity.ok(Map.of("count", supportChat.driverInboxUnreadTotal()));
+    }
+
+    @GetMapping("/api/operator/support/driver/{userId}")
+    public ResponseEntity<?> driverThreadForOperator(@PathVariable Long userId) {
+        return ResponseEntity.ok(Map.of("messages", supportChat.getThreadForStaff(userId)));
+    }
+
+    @PostMapping("/api/operator/support/driver/{userId}/reply")
+    public ResponseEntity<?> driverReply(@AuthenticationPrincipal User staff,
+                                         @PathVariable Long userId,
+                                         @Valid @RequestBody ChatMessageRequest req) {
+        try {
+            return ResponseEntity.ok(supportChat.replyFromStaff(staff, userId, req.getText()));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+        }
+    }
+
     // ─── Staff (admin) tomoni ──────────────────────────────────────────
     @GetMapping("/api/admin/support/conversations")
     public ResponseEntity<?> conversations() {

@@ -28,6 +28,11 @@ public class SupportMessage {
     @Column(name = "sender_role", nullable = false, length = 20)
     private String senderRole;
 
+    // PASSENGER | DRIVER — thread egasining turi (V38). Mavjud satrlar default 'PASSENGER'.
+    // Driver va passenger user_id lari boshqa-boshqa, lekin operator inboxda turini ajratish kerak.
+    @Column(name = "thread_type", nullable = false, length = 10)
+    private String threadType = "PASSENGER";
+
     // Aslida xabarni yuborgan account (operator bo'lsa — operatorning user.id si). Audit uchun.
     @Column(name = "sender_id")
     private Long senderId;
@@ -57,6 +62,8 @@ public class SupportMessage {
     public void setUser(User user) { this.user = user; }
     public String getSenderRole() { return senderRole; }
     public void setSenderRole(String senderRole) { this.senderRole = senderRole; }
+    public String getThreadType() { return threadType; }
+    public void setThreadType(String threadType) { this.threadType = threadType; }
     public Long getSenderId() { return senderId; }
     public void setSenderId(Long senderId) { this.senderId = senderId; }
     public String getText() { return text; }

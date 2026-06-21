@@ -29,6 +29,9 @@ public class SupportChatService {
     private static final int MAX_LEN = 1000;
     public static final String ROLE_PASSENGER = "PASSENGER";
     public static final String ROLE_OPERATOR = "OPERATOR";
+    public static final String ROLE_DRIVER = "DRIVER";
+    public static final String THREAD_PASSENGER = "PASSENGER";
+    public static final String THREAD_DRIVER = "DRIVER";
 
     private final SupportMessageRepository repo;
     private final UserRepository userRepository;
@@ -60,15 +63,19 @@ public class SupportChatService {
         String clean = clean(text);
         User passenger = userRepository.findById(passengerUserId)
                 .orElseThrow(() -> new IllegalArgumentException("Yo'lovchi topilmadi"));
+        // Javob mavjud thread turida qoladi (DRIVER yoki PASSENGER) — aks holda thread operator inboxidan tushib qoladi.
+        String threadType = repo.findFirstByUserIdOrderByCreatedAtAsc(passengerUserId)
+                .map(SupportMessage::getThreadType).orElse(THREAD_PASSENGER);
         SupportMessage m = new SupportMessage();
         m.setUser(passenger);
         m.setSenderRole(ROLE_OPERATOR);
+        m.setThreadType(threadType);
         m.setSenderId(staff.getId());
         m.setText(clean);
         m.setReadByOperator(true);    // staff yozdi — operator tomonda o'qilgan
-        m.setReadByPassenger(false);  // yo'lovchi hali ko'rmagan
+        m.setReadByPassenger(false);  // yo'lovchi/haydovchi hali ko'rmagan
         repo.save(m);
-        log.info("Support: staff {} replied to passenger {}", staff.getId(), passengerUserId);
+        log.info("Support: staff {} replied to user {} ({})", staff.getId(), passengerUserId, threadType);
         return toMap(m, passenger);
     }
 
@@ -83,7 +90,71 @@ public class SupportChatService {
     @Transactional
     public List<Map<String, Object>> getThreadForStaff(Long passengerUserId) {
         repo.markPassengerMessagesReadByOperator(passengerUserId);
+        repo.markDriverMessagesReadByOperator(passengerUserId);   // driver threadlari uchun ham (passengerda no-op)
         return threadMaps(passengerUserId);
+    }
+
+    // ─── Driver support (haydovchi ↔ operator) — V38 ──────────────────
+
+    /** Haydovchi support'ga xabar yuboradi. */
+    @Transactional
+    public Map<String, Object> sendFromDriver(User driver, String text) {
+        String clean = clean(text);
+        SupportMessage m = new SupportMessage();
+        m.setUser(driver);
+        m.setSenderRole(ROLE_DRIVER);
+        m.setThreadType(THREAD_DRIVER);
+        m.setSenderId(driver.getId());
+        m.setText(clean);
+        m.setReadByPassenger(true);   // thread egasi (haydovchi) yozgan — o'qilgan
+        m.setReadByOperator(false);   // operator hali ko'rmagan
+        repo.save(m);
+        log.info("Support: driver {} sent a message", driver.getId());
+        return toMap(m, driver);
+    }
+
+    /** Haydovchi o'z thread'ini ochadi — operator javoblari o'qilgan deb belgilanadi. */
+    @Transactional
+    public List<Map<String, Object>> getThreadForDriver(User driver) {
+        repo.markOperatorMessagesReadByPassenger(driver.getId());  // read_by_passenger = thread egasi (haydovchi)
+        return threadMaps(driver.getId());
+    }
+
+    /** Haydovchi uchun o'qilmagan (operator) xabarlar soni — badge. */
+    @Transactional(readOnly = true)
+    public long driverUnreadCount(Long userId) {
+        return repo.countByUserIdAndReadByPassengerFalseAndSenderRole(userId, ROLE_OPERATOR);
+    }
+
+    /** Operator panel: HAYDOVCHI suhbatlari ro'yxati — oxirgi xabar + o'qilmaganlar + F.I.SH. */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listDriverConversations() {
+        Map<Long, Long> unread = new HashMap<>();
+        for (Object[] row : repo.findUnreadCountsPerThreadByRole(ROLE_DRIVER)) {
+            unread.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+        }
+        List<SupportMessage> latest = repo.findLatestPerThreadByType(THREAD_DRIVER);
+        List<Map<String, Object>> out = new ArrayList<>(latest.size());
+        for (SupportMessage m : latest) {
+            User u = m.getUser();
+            Map<String, Object> c = new LinkedHashMap<>();
+            c.put("userId", u.getId());
+            // Operator haydovchining ISMI + FAMILIYASI (F.I.SH.) ni ko'radi.
+            c.put("name", u.getName() != null && !u.getName().isBlank() ? u.getName() : u.getPhone());
+            c.put("phone", u.getPhone());
+            c.put("lastText", m.getText());
+            c.put("lastRole", m.getSenderRole());
+            c.put("lastAt", m.getCreatedAt() != null ? m.getCreatedAt().toString() : null);
+            c.put("unread", unread.getOrDefault(u.getId(), 0L));
+            out.add(c);
+        }
+        return out;
+    }
+
+    /** Operator inbox (driver): global o'qilmagan haydovchi xabarlari soni — badge. */
+    @Transactional(readOnly = true)
+    public long driverInboxUnreadTotal() {
+        return repo.countByReadByOperatorFalseAndSenderRole(ROLE_DRIVER);
     }
 
     private List<Map<String, Object>> threadMaps(Long userId) {
