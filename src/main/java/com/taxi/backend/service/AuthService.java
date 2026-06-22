@@ -327,6 +327,10 @@ public class AuthService {
             throw new IllegalStateException("WRONG_ROLE");
         }
 
+        // Oxirgi kirish vaqti (operatorlar boshqaruvi audit'i — Feature A)
+        user.setLastLoginAt(LocalDateTime.now());
+        userRepository.save(user);
+
         String token = jwtService.generateToken(user.getPhone(), user.getRole().name());
         String refreshToken = jwtService.generateRefreshToken(user.getPhone(), user.getRole().name());
 

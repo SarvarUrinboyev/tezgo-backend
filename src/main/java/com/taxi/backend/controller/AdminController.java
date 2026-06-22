@@ -41,6 +41,7 @@ public class AdminController {
     private final OtpRepository otpRepository;
     private final AuthService authService;
     private final com.taxi.backend.service.SystemSettingService systemSettingService;
+    private final com.taxi.backend.service.OperatorAdminService operatorAdminService;
 
     public AdminController(AdminService adminService,
             PhotoService photoService,
@@ -50,7 +51,8 @@ public class AdminController {
             org.springframework.data.redis.core.RedisTemplate<String, Object> redisTemplate,
             OtpRepository otpRepository,
             AuthService authService,
-            com.taxi.backend.service.SystemSettingService systemSettingService) {
+            com.taxi.backend.service.SystemSettingService systemSettingService,
+            com.taxi.backend.service.OperatorAdminService operatorAdminService) {
         this.adminService = adminService;
         this.photoService = photoService;
         this.tariffRepository = tariffRepository;
@@ -60,6 +62,7 @@ public class AdminController {
         this.otpRepository = otpRepository;
         this.authService = authService;
         this.systemSettingService = systemSettingService;
+        this.operatorAdminService = operatorAdminService;
     }
 
     // ─── Sozlamalar: talab narxi (surge) toggle — default OFF ─────────────────
@@ -357,40 +360,69 @@ public class AdminController {
         return ResponseEntity.ok(adminService.getFinancialReport(days));
     }
 
-    /** Operator foydalanuvchi yaratish */
+    // ─── Operatorlar/adminlar (staff) boshqaruvi — FAQAT ADMIN; OperatorAdminService guard'lar (Feature A) ──
+
+    /** Staff (operator/admin) yaratish — username + parol + rol. Parol BCrypt; hech qachon qaytarilmaydi. */
     @PostMapping("/operators")
     public ResponseEntity<?> createOperator(
-            @Valid @RequestBody com.taxi.backend.dto.CreateOperatorRequest req) {
+            @Valid @RequestBody com.taxi.backend.dto.CreateStaffRequest req) {
         try {
-            var existing = userRepository.findByPhone(req.getPhone());
-            if (existing.isPresent()) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Bu telefon raqam allaqachon mavjud"));
-            }
-            com.taxi.backend.model.User user = new com.taxi.backend.model.User();
-            user.setPhone(req.getPhone());
-            user.setName(req.getName());
-            user.setRole(com.taxi.backend.enums.Role.OPERATOR);
-            user.setActive(true);
-            userRepository.save(user);
-            return ResponseEntity.ok(Map.of(
-                    "id", user.getId(),
-                    "name", user.getName(),
-                    "phone", user.getPhone(),
-                    "role", "OPERATOR"));
-        } catch (Exception e) {
+            return ResponseEntity.ok(operatorAdminService.create(
+                    req.getName(), req.getPhone(), req.getUsername(), req.getPassword(), req.getRole()));
+        } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
 
-    /** Operatorlar ro'yxati */
+    /** Staff ro'yxati (operator+admin) — parol hash HECH QACHON qaytarilmaydi. */
     @GetMapping("/operators")
     public ResponseEntity<?> getOperators() {
-        var operators = userRepository.findAll().stream()
-                .filter(u -> u.getRole() == com.taxi.backend.enums.Role.OPERATOR)
-                .map(u -> Map.of("id", (Object) u.getId(), "name", (Object) u.getName(),
-                        "phone", (Object) u.getPhone(), "active", (Object) u.isActive()))
-                .toList();
-        return ResponseEntity.ok(operators);
+        return ResponseEntity.ok(operatorAdminService.list());
+    }
+
+    @GetMapping("/operators/{id}")
+    public ResponseEntity<?> getOperator(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(operatorAdminService.get(id));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Rol va/yoki active o'zgartirish — self-lockout + oxirgi ADMIN guard (server tomonda majburiy). */
+    @PutMapping("/operators/{id}")
+    public ResponseEntity<?> updateOperator(@AuthenticationPrincipal com.taxi.backend.model.User admin,
+            @PathVariable Long id, @RequestBody Map<String, Object> body) {
+        try {
+            String role = body.get("role") != null ? String.valueOf(body.get("role")) : null;
+            Boolean active = body.get("active") != null ? Boolean.valueOf(String.valueOf(body.get("active"))) : null;
+            return ResponseEntity.ok(operatorAdminService.update(admin, id, role, active));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Parol tiklash (yangi BCrypt hash; eski hech qachon ko'rsatilmaydi). */
+    @PostMapping("/operators/{id}/set-password")
+    public ResponseEntity<?> resetOperatorPassword(@PathVariable Long id,
+            @Valid @RequestBody SetPasswordRequest req) {
+        try {
+            operatorAdminService.resetPassword(id, req.getNewPassword());
+            return ResponseEntity.ok(Map.of("message", "Parol o'rnatildi"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/operators/{id}")
+    public ResponseEntity<?> deleteOperator(@AuthenticationPrincipal com.taxi.backend.model.User admin,
+            @PathVariable Long id) {
+        try {
+            operatorAdminService.delete(admin, id);
+            return ResponseEntity.ok(Map.of("message", "O'chirildi"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     /** Admin — istalgan faol buyurtmani bekor qilish */

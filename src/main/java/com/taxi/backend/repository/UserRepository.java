@@ -22,6 +22,21 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Page<User> findByRole(Role role, Pageable pageable);
 
+    /** Operatorlar boshqaruvi (Feature A): staff (OPERATOR+ADMIN) ro'yxati, yangidan eskiga. */
+    List<User> findByRoleInOrderByCreatedAtDescIdDesc(java.util.Collection<Role> roles);
+
+    /** Self-lockout guard: faol ADMIN lar soni (oxirgi ADMINni o'chirish/disable/demote taqiqlanadi). */
+    long countByRoleAndIsActiveTrue(Role role);
+
+    /** Staff o'chirishda audit FK'larni bo'shatish (channel/broadcast sent_by). */
+    @Modifying
+    @Query("UPDATE ChannelMessage m SET m.sentBy = null WHERE m.sentBy = :userId")
+    void nullifyChannelSentBy(@Param("userId") Long userId);
+
+    @Modifying
+    @Query("UPDATE BroadcastMessage m SET m.sentBy = null WHERE m.sentBy.id = :userId")
+    void nullifyBroadcastSentBy(@Param("userId") Long userId);
+
     /** Referal kod bo'yicha topish (do'st kodni kiritganda) */
     Optional<User> findByReferralCode(String referralCode);
 
