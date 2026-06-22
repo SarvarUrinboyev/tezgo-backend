@@ -30,6 +30,10 @@ public class TripExpiryScheduler {
     @Value("${app.taxometer.stuck-trip-max-hours:6}")
     private long taxometerStuckMaxHours;
 
+    /** Backstop: ACCEPTED trip shu daqiqadan oshsa (boshlanmagan), osilib qolgan deb yopiladi va haydovchi bo'shatiladi (default 15min). */
+    @Value("${app.dispatch.stuck-accepted-max-minutes:15}")
+    private long acceptedStuckMaxMinutes;
+
     private final TripRepository tripRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final PushNotificationService pushNotificationService;
@@ -187,6 +191,37 @@ public class TripExpiryScheduler {
         }
         log.info("[STUCK-TAXOMETER] {} ta osilib qolgan taxometer trip yopildi (chegara={}h)",
                 stuck.size(), taxometerStuckMaxHours);
+    }
+
+    /**
+     * Backstop — ACCEPTED holatda osilib qolgan (qabul qilingan, lekin STARTED ga o'tmagan) triplarni yopadi.
+     *
+     * Haydovchi buyurtmani qabul qilib keyin uni boshlamasa/yakunlamasa (ilova yopildi, tarmoq uzildi),
+     * trip ACCEPTED da qoladi → haydovchi doimiy "band" (ACTIVE_DRIVER_STATUSES) → yangi buyurtma kelmaydi
+     * (#360 sinfi). Konfiguratsiyalanadigan chegaradan (default 15 daqiqa) keyin: CANCELLED_BY_ADMIN +
+     * {@link TripAssignmentUtil#clearDriverAssignment} bilan haydovchini bo'shatadi.
+     */
+    @Scheduled(fixedDelay = 60_000) // har 1 daqiqada
+    @Transactional
+    public void cancelStuckAcceptedTrips() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime cutoff = now.minusMinutes(acceptedStuckMaxMinutes);
+        List<Trip> stuck = tripRepository.findStuckAcceptedTrips(cutoff);
+        if (stuck.isEmpty()) return;
+
+        for (Trip trip : stuck) {
+            Long driverId = trip.getDriver() != null ? trip.getDriver().getId() : null;
+            LocalDateTime since = trip.getAcceptedAt() != null ? trip.getAcceptedAt() : trip.getCreatedAt();
+            long ageMin = since != null ? Duration.between(since, now).toMinutes() : -1;
+            trip.setStatus(TripStatus.CANCELLED_BY_ADMIN);
+            trip.setCancelReason("Auto: osilib qolgan ACCEPTED (boshlanmagan, " + ageMin + "min backstop)");
+            TripAssignmentUtil.clearDriverAssignment(trip); // haydovchini bo'shatish (busy-set'dan chiqarish)
+            tripRepository.save(trip);
+            log.warn("[STUCK-ACCEPTED] Trip #{} avtomatik yopildi → CANCELLED_BY_ADMIN, haydovchi bo'shatildi (driver={}, age={}min)",
+                    trip.getId(), driverId, ageMin);
+        }
+        log.info("[STUCK-ACCEPTED] {} ta osilib qolgan ACCEPTED trip yopildi (chegara={}min)",
+                stuck.size(), acceptedStuckMaxMinutes);
     }
 
     private Set<Long> parseNotifiedIds(String csv) {

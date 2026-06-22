@@ -220,7 +220,9 @@ public class OperatorService {
         return result;
     }
 
-    /** Operator buyurtmani bekor qiladi — faqat CALL + SEARCHING */
+    /** Operator buyurtmani bekor qiladi — CALL manbali, terminal BO'LMAGAN har qanday holatda
+     *  (SEARCHING/ACCEPTED/DRIVER_ARRIVED/STARTED). Biriktirilgan haydovchi BO'SHATILADI (busy-set'dan chiqadi),
+     *  shunda osilib qolgan ACCEPTED trip haydovchini doimiy band qilib qo'ymaydi. */
     @Transactional
     public Map<String, Object> cancelTrip(User operator, Long tripId) {
         Trip trip = tripRepository.findById(tripId)
@@ -229,14 +231,19 @@ public class OperatorService {
         if (!"CALL".equals(trip.getSource()) && !"CALL_TAXOMETER".equals(trip.getSource())) {
             throw new RuntimeException("Faqat operator yaratgan buyurtmani bekor qilish mumkin");
         }
-        if (trip.getStatus() != TripStatus.SEARCHING) {
-            throw new RuntimeException("Faqat haydovchi qidirilayotgan buyurtmani bekor qilish mumkin");
+        if (TripStatus.TERMINAL_STATUSES.contains(trip.getStatus())) {
+            throw new RuntimeException("Buyurtma allaqachon yakunlangan yoki bekor qilingan");
         }
 
+        Long freedDriverId = trip.getDriver() != null ? trip.getDriver().getId() : null;
         trip.setStatus(TripStatus.CANCELLED_BY_ADMIN);
+        trip.setCancelReason("Operator bekor qildi");
+        // Haydovchini bo'shatish — ACCEPTED/DRIVER_ARRIVED bo'lsa busy-set'dan chiqadi (orphan trip leak'ini oldini oladi).
+        TripAssignmentUtil.clearDriverAssignment(trip);
         tripRepository.save(trip);
 
-        log.info("[OPERATOR] Buyurtma #{} bekor qilindi (operator={})", tripId, operator.getPhone());
+        log.info("[OPERATOR] Buyurtma #{} bekor qilindi (operator={}, freedDriver={})",
+                tripId, operator.getPhone(), freedDriverId);
 
         return Map.of("tripId", tripId, "status", "CANCELLED_BY_ADMIN", "message", "Buyurtma bekor qilindi");
     }

@@ -18,4 +18,11 @@ public enum TripStatus {
      * yangi buyurtma olmaydi (matching/broadcast/claim/accept gate'larida tekshiriladi).
      */
     public static final List<TripStatus> ACTIVE_DRIVER_STATUSES = List.of(ACCEPTED, DRIVER_ARRIVED, STARTED);
+
+    /**
+     * Yakuniy (terminal) statuslar — bu holatdagi tripni qayta bekor qilib/o'zgartirib bo'lmaydi.
+     * Operator bekor qilishi mumkin bo'lgan = bu ro'yxatda BO'LMAGAN har qanday status.
+     */
+    public static final List<TripStatus> TERMINAL_STATUSES =
+            List.of(COMPLETED, CANCELLED_BY_PASSENGER, CANCELLED_BY_DRIVER, CANCELLED_BY_ADMIN);
 }

@@ -927,16 +927,10 @@ public class TripService {
         return result;
     }
 
-    /** Haydovchi biriktirilishi va kutish/broadcast holatini tozalash (qayta yuborishga tayyorlash). */
+    /** Haydovchi biriktirilishi va kutish/broadcast holatini tozalash (qayta yuborishga tayyorlash).
+     *  Umumiy mantiq {@link TripAssignmentUtil} da — operator bekor qilish + scheduler backstop ham shuni ishlatadi. */
     private void clearDriverAssignment(Trip trip) {
-        trip.setDriver(null);
-        trip.setAcceptedAt(null);
-        trip.setArrivedAt(null);
-        trip.setWaitingStartedAt(null);
-        trip.setWaitingEndedAt(null);
-        trip.setWaitingPrice(0L);
-        trip.setBroadcastAt(null);
-        trip.setNotifiedDriverIds(null);
+        TripAssignmentUtil.clearDriverAssignment(trip);
     }
 
     /** Tripni yakuniy CANCELLED_BY_DRIVER holatiga o'tkazish va yo'lovchini xabardor qilish. */

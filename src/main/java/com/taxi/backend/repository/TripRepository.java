@@ -176,4 +176,15 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
            "AND t.source IN ('TAXOMETER', 'CALL_TAXOMETER') " +
            "AND COALESCE(t.startedAt, t.createdAt) < :cutoff")
     List<Trip> findStuckStartedTaximeterTrips(@Param("cutoff") LocalDateTime cutoff);
+
+    /**
+     * ACCEPTED holatda osilib qolgan triplar — haydovchi qabul qilgan, lekin STARTED ga o'tmagan
+     * (ilova yopildi / tarmoq uzildi). Bunday trip haydovchini doimiy "band" qiladi
+     * (ACTIVE_DRIVER_STATUSES ⊇ {ACCEPTED}) → yangi buyurtma kelmaydi. Backstop konservativ
+     * chegaradan (acceptedAt < cutoff) keyin ularni yopib, haydovchini bo'shatadi.
+     */
+    @Query("SELECT t FROM Trip t LEFT JOIN FETCH t.driver " +
+           "WHERE t.status = com.taxi.backend.enums.TripStatus.ACCEPTED " +
+           "AND COALESCE(t.acceptedAt, t.createdAt) < :cutoff")
+    List<Trip> findStuckAcceptedTrips(@Param("cutoff") LocalDateTime cutoff);
 }
