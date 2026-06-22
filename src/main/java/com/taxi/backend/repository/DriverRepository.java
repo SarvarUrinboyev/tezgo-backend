@@ -31,6 +31,8 @@ public interface DriverRepository extends JpaRepository<Driver, Long> {
 
     List<Driver> findByIsOnlineTrue();
 
+    List<Driver> findByIsOnlineFalse();
+
     @Query("SELECT d FROM Driver d WHERE d.isOnline = true AND d.status = 'ACTIVE' " +
             "AND d.latitude IS NOT NULL")
     List<Driver> findActiveOnlineDrivers();
