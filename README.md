@@ -1,5 +1,7 @@
 # TezYol / TEZGO — Ride-Hailing Platform Backend
 
+[![Backend CI](https://github.com/SarvarUrinboyev/tezgo-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/SarvarUrinboyev/tezgo-backend/actions/workflows/ci.yml)
+
 Production backend API for **TezYol (TEZGO)**, a ride-hailing (taxi) platform serving real drivers, passengers, dispatch operators, and admins in Uzbekistan. A single Spring Boot 3 service powers the full ride lifecycle — OTP/JWT auth, driver onboarding, real-time matching and dispatch, live taximeter and surge/night-fare pricing, in-app chat, push notifications, and Payme/Click payments — deployed as a systemd-managed JVM service on a VPS behind Nginx.
 
 > Domain comments and most commit messages are in Uzbek (the product language). This README describes the architecture and APIs in English.
@@ -37,7 +39,7 @@ controller  ->  service  ->  repository (Spring Data JPA)  ->  PostgreSQL
 | Production code | ~17,000 LOC across 172 Java files |
 | REST endpoints | 155 across 12 controllers |
 | Database | 40 Flyway migrations (versioned, live schema) |
-| Tests | **265 tests across 62 classes** — incl. an automated penetration test (brute-force, IDOR, JWT-tamper, SQL-injection, rate-limit) and a Testcontainers schema-migration test that boots real PostgreSQL |
+| Tests | **262 tests across 61 classes** — incl. an automated penetration test (brute-force, IDOR, JWT-tamper, SQL-injection, rate-limit) and a Testcontainers schema-migration test that boots real PostgreSQL |
 | Auth | Stateless JWT (access + refresh), BCrypt(12), role-based (ADMIN / OPERATOR / DRIVER / PASSENGER) |
 | Hardening | Full OWASP response headers, Redis + Bucket4j rate limiting, fail-closed token blacklist |
 | Ops | Multi-stage non-root Docker image with HEALTHCHECK, graceful shutdown, HikariCP tuning, Prometheus metrics |
