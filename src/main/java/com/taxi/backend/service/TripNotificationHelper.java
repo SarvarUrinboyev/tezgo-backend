@@ -54,9 +54,14 @@ public class TripNotificationHelper {
         log.info("[MATCHING] Buyurtma #{} uchun haydovchi qidirilmoqda (lat={}, lon={}, radius={}km, tariff={})",
                 trip.getId(), lat, lon, matchingRadiusKm, tariffName);
 
+        // Operator/admin yaratgan buyurtma (CALL/CALL_TAXOMETER) rad etish cooldown'ini E'TIBORSIZ qoldiradi —
+        // yupqa flotda cooldown operator dispatch'ini bloklab "0 notified" ga olib kelmasligi uchun.
+        // Yo'lovchi auto-dispatch (APP/APP_TAXOMETER) cooldown'ni odatdagidek saqlaydi.
+        boolean isOperatorOrder = trip.getSource() != null && trip.getSource().startsWith("CALL");
+
         List<MatchingService.MatchedDriver> candidates = List.of();
         try {
-            candidates = matchingService.findNearbyDrivers(lat, lon, matchingRadiusKm);
+            candidates = matchingService.findNearbyDrivers(lat, lon, matchingRadiusKm, isOperatorOrder);
         } catch (Exception e) {
             log.error("[MATCHING] Matching engine xatolik — fallback ga o'tish: {}", e.getMessage(), e);
         }
@@ -99,7 +104,7 @@ public class TripNotificationHelper {
                 if (!notifiedIds.contains(d.getId())) {
                     if (excluded.contains(d.getId())) return; // bekor qilgan haydovchi — skip
                     if (busy.contains(d.getId())) return; // faol tripi bor — skip
-                    if (d.isInCooldown()) return; // rad etish cooldown'i — skip
+                    if (!isOperatorOrder && d.isInCooldown()) return; // rad etish cooldown'i — skip (operator dispatch e'tiborsiz qoldiradi)
                     if (!driverAcceptsTariff(d.getCarModel(), d.getAcceptedTariffs(), d.getTariffGrants(), tariffName)) return;
                     if (d.getBalance() != null && d.getBalance() < 0) return; // Manfiy balans — skip
                     if (!DriverServiceFilter.accepts(fbEnabled.get(d.getId()), selectedServices)) return; // xizmat mos emas

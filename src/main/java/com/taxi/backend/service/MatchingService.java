@@ -63,7 +63,7 @@ public class MatchingService {
      * @param radiusKm      Qidirish radiusi (km)
      * @return Eng yaqin haydovchilar ro'yxati (masofasi bo'yicha saralangan)
      */
-    public List<MatchedDriver> findNearbyDrivers(double passengerLat, double passengerLon, double radiusKm) {
+    public List<MatchedDriver> findNearbyDrivers(double passengerLat, double passengerLon, double radiusKm, boolean ignoreCooldown) {
         List<DriverLocationCache.NearbyDriver> nearby =
                 locationCache.getNearbyDrivers(passengerLat, passengerLon, radiusKm);
 
@@ -96,7 +96,7 @@ public class MatchingService {
                     Driver driver = driverMap.get(nd.driverId());
                     if (driver == null || !driver.isOnline()) return null;
                     if (driver.getBalance() != null && driver.getBalance() < 0) return null;
-                    if (driver.isInCooldown()) return null; // rad etish cooldown'i — yangi buyurtma olmaydi
+                    if (!ignoreCooldown && driver.isInCooldown()) return null; // rad etish cooldown'i (operator dispatch e'tiborsiz qoldiradi)
 
                     // ETA hisoblash — Haversine * yo'l egriligi koeffitsiyenti * tezlik
                     // Shahar ichida Haversine x 1.4 (yo'l egriligi), o'rtacha 30 km/h
@@ -126,6 +126,11 @@ public class MatchingService {
 
         // Eng yuqori scoring g'olib — masofa (60%) + aktivlik (40%), tenglikda eng erta bo'shagani
         return rankByScore(eligible, radiusKm);
+    }
+
+    /** Standart matching — rad etish cooldown'i HISOBGA OLINADI (yo'lovchi auto-dispatch). */
+    public List<MatchedDriver> findNearbyDrivers(double passengerLat, double passengerLon, double radiusKm) {
+        return findNearbyDrivers(passengerLat, passengerLon, radiusKm, false);
     }
 
     /**

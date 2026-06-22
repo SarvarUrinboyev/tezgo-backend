@@ -52,7 +52,7 @@ class TripNotifyServiceFilterTest {
                 41.30, 69.60, 1.0, 3.0, 5.0, "STANDART,DAMAS,BIZNES", null, 0.0, null);
         var has = new MatchingService.MatchedDriver(8L, "Xizmatli", "Nexia", "01A888BB",
                 41.30, 69.60, 1.2, 4.0, 5.0, "STANDART,DAMAS,BIZNES", null, 0.0, null);
-        when(matchingService.findNearbyDrivers(anyDouble(), anyDouble(), anyDouble()))
+        when(matchingService.findNearbyDrivers(anyDouble(), anyDouble(), anyDouble(), anyBoolean()))
                 .thenReturn(List.of(missing, has));
         when(tripRepository.findBusyDriverIds(TripStatus.ACTIVE_DRIVER_STATUSES)).thenReturn(List.of());
         when(driverRepository.findByIsOnlineTrue()).thenReturn(List.of()); // fallback bo'sh

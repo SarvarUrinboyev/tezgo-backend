@@ -151,8 +151,10 @@ public class DriverAppService {
         driver.setOnline(newOnline);
         driver.setUpdatedAt(LocalDateTime.now());
         // Online bo'lganda — "bo'sh bo'lgan vaqt" (free_since) yangilanadi (matching tie-break uchun)
+        // + rad etish cooldown'i tozalanadi (haydovchining manual reset'i — offline→online cooldown'ni ham bo'shatadi)
         if (newOnline) {
             driver.setFreeSince(LocalDateTime.now());
+            driver.setOrderCooldownUntil(null);
         }
         driverRepository.save(driver);
 

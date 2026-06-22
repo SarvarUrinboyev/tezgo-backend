@@ -50,7 +50,7 @@ class TripNotificationHelperBusyTest {
                 41.30, 69.60, 1.0, 3.0, 5.0, "STANDART,DAMAS,BIZNES", null, 0.0, null);
         var free = new MatchingService.MatchedDriver(8L, "Bo'sh", "Nexia", "01A888BB",
                 41.30, 69.60, 1.2, 4.0, 5.0, "STANDART,DAMAS,BIZNES", null, 0.0, null);
-        when(matchingService.findNearbyDrivers(anyDouble(), anyDouble(), anyDouble()))
+        when(matchingService.findNearbyDrivers(anyDouble(), anyDouble(), anyDouble(), anyBoolean()))
                 .thenReturn(List.of(busy, free));
         when(tripRepository.findBusyDriverIds(TripStatus.ACTIVE_DRIVER_STATUSES))
                 .thenReturn(List.of(7L)); // 7-haydovchi band
