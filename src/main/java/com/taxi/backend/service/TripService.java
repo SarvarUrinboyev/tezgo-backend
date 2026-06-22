@@ -361,15 +361,19 @@ public class TripService {
             throw new RuntimeException("Sizda faol buyurtma bor");
         }
 
-        // Rad etish cooldown'idagi haydovchi qabul qila olmaydi
-        if (driver.isInCooldown()) {
-            throw new RuntimeException("Iltimos biroz kuting — yangi buyurtma tez orada");
-        }
-
         // Optimistic Lock: @Version field trip.save() da avtomatik tekshiriladi
         // Agar boshqa haydovchi oldin save qilgan bo'lsa → OptimisticLockException
         Trip trip = tripRepository.findById(tripId)
                 .orElseThrow(() -> new RuntimeException("Buyurtma topilmadi"));
+
+        // Rad etish cooldown'idagi haydovchi qabul qila olmaydi — AMMO operator/admin (CALL/CALL_TAXOMETER)
+        // buyurtmasi cooldown'ni E'TIBORSIZ qoldiradi (getAvailableTrips ro'yxati + MatchingService push
+        // bilan AYNAN bir xil shart — TripNotificationHelper:60). Aks holда ro'yxatda KO'RINADIGAN operator
+        // buyurtmasini haydovchi qabul qila olmay "kuting" xatosiga uchrardi (yarim tuzatish).
+        boolean isOperatorOrder = trip.getSource() != null && trip.getSource().startsWith("CALL");
+        if (!isOperatorOrder && driver.isInCooldown()) {
+            throw new RuntimeException("Iltimos biroz kuting — yangi buyurtma tez orada");
+        }
 
         if (trip.getStatus() != TripStatus.SEARCHING)
             throw new RuntimeException("Bu buyurtma allaqachon qabul qilingan");
@@ -637,10 +641,16 @@ public class TripService {
                 .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
         // Strict: manfiy balansda (>= 0 talab) yangi buyurtma berilmaydi
         if (!driver.isOnline() || (driver.getBalance() != null && driver.getBalance() < 0)) return List.of();
-        // Faol tripi bor yoki rad etish cooldown'idagi haydovchiga yangi buyurtmalar ko'rsatilmaydi
-        if (driver.isInCooldown()
-                || tripRepository.existsByDriverIdAndStatusIn(driver.getId(), TripStatus.ACTIVE_DRIVER_STATUSES))
+        // Faol tripi bor haydovchiga UMUMAN yangi buyurtma ko'rsatilmaydi (band — bu darvoza istisno qilinmaydi)
+        if (tripRepository.existsByDriverIdAndStatusIn(driver.getId(), TripStatus.ACTIVE_DRIVER_STATUSES))
             return List.of();
+
+        // Rad etish cooldown'i: oddiy yo'lovchi (APP) auto-dispatch buyurtmalari KO'RSATILMAYDI. AMMO
+        // operator/admin (CALL/CALL_TAXOMETER) buyurtmalari cooldown'ni E'TIBORSIZ qoldiradi — bu
+        // MatchingService.findNearbyDrivers(ignoreCooldown) + TripNotificationHelper:107 push yo'lidagi
+        // bypass'ning FOREGROUND ro'yxatdagi JUFTI (Deploy 5). Aks holда operator buyurtmasi faqat
+        // backgrounded push'da ko'rinib, ilova ochiq turganda ro'yxatga tushmasdi (cooldown tugaguncha).
+        boolean inCooldown = driver.isInCooldown();
 
         List<Trip> searchingTrips = tripRepository.findByStatusWithRelations(TripStatus.SEARCHING);
 
@@ -662,6 +672,9 @@ public class TripService {
         java.util.Set<String> enabledServices = enabledServiceCodes(driver.getId());
 
         return searchingTrips.stream()
+                // Cooldown'da FAQAT operator/CALL buyurtmalar o'tadi — matching bypass bilan AYNAN bir xil shart
+                // (TripNotificationHelper:60 — source != null && source.startsWith("CALL"), CALL + CALL_TAXOMETER).
+                .filter(t -> !inCooldown || (t.getSource() != null && t.getSource().startsWith("CALL")))
                 .filter(t -> DriverTariffFilter.accepts(driver, t))
                 .filter(t -> DriverServiceFilter.accepts(enabledServices, t.getSelectedServices()))
                 .filter(t -> !ExcludedDriverFilter.contains(t.getExcludedDriverIds(), driver.getId()))

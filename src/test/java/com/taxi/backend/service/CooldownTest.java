@@ -88,15 +88,40 @@ class CooldownTest {
     }
 
     @Test
-    @DisplayName("Cooldown'dagi haydovchi qabul qila olmaydi")
-    void acceptInCooldown_rejected() {
+    @DisplayName("Cooldown'dagi haydovchi yo'lovchi (APP) buyurtmani qabul qila olmaydi")
+    void acceptInCooldown_passengerOrder_rejected() {
         driver.setOrderCooldownUntil(LocalDateTime.now().plusSeconds(60));
         when(tripRepository.existsByDriverIdAndStatusIn(5L, ACTIVE)).thenReturn(false);
+        Trip trip = new Trip();
+        trip.setId(2L);
+        trip.setStatus(TripStatus.SEARCHING);
+        trip.setSource("APP");
+        when(tripRepository.findById(2L)).thenReturn(Optional.of(trip));
 
         RuntimeException ex = assertThrows(RuntimeException.class,
                 () -> tripService.acceptTrip(driverUser, 2L));
         assertTrue(ex.getMessage().contains("kuting"));
-        verify(tripRepository, never()).findById(anyLong());
+        assertEquals(TripStatus.SEARCHING, trip.getStatus(), "rad etilgan — status o'zgarmaydi");
+    }
+
+    @Test
+    @DisplayName("Cooldown'da ham operator (CALL) buyurtmani QABUL qila oladi — list/matching bilan bir xil")
+    void acceptInCooldown_operatorOrder_allowed() {
+        driver.setOrderCooldownUntil(LocalDateTime.now().plusSeconds(60));
+        when(tripRepository.existsByDriverIdAndStatusIn(5L, ACTIVE)).thenReturn(false);
+        Trip trip = new Trip();
+        trip.setId(2L);
+        trip.setStatus(TripStatus.SEARCHING);
+        trip.setSource("CALL");
+        User p = new User();
+        p.setId(10L);
+        trip.setPassenger(p);
+        when(tripRepository.findById(2L)).thenReturn(Optional.of(trip));
+
+        Map<String, Object> res = tripService.acceptTrip(driverUser, 2L);
+
+        assertEquals("ACCEPTED", res.get("status"));
+        assertEquals(TripStatus.ACCEPTED, trip.getStatus());
     }
 
     @Test
@@ -118,14 +143,82 @@ class CooldownTest {
         assertEquals(TripStatus.ACCEPTED, trip.getStatus());
     }
 
+    // ── getAvailableTrips × cooldown × operator(CALL)-bypass — Deploy 5 push bypass'ining FOREGROUND juftligi ──
+
+    private Trip searching(long id, String source) {
+        Trip t = new Trip();
+        t.setId(id);
+        t.setStatus(TripStatus.SEARCHING);
+        t.setSource(source);
+        t.setFromAddress("Chilonzor");
+        t.setTotalPrice(100_000L);
+        return t;
+    }
+
     @Test
-    @DisplayName("Cooldown'dagi haydovchiga mavjud buyurtmalar ro'yxati bo'sh")
-    void getAvailableTrips_inCooldown_empty() {
+    @DisplayName("Cooldown'da yo'lovchi (APP) buyurtma KO'RINMAYDI")
+    void getAvailableTrips_inCooldown_passengerHidden() {
         driver.setOrderCooldownUntil(LocalDateTime.now().plusSeconds(60));
+        when(tripRepository.findByStatusWithRelations(TripStatus.SEARCHING))
+                .thenReturn(List.of(searching(1L, "APP")));
+
+        assertTrue(tripService.getAvailableTrips(driverUser).isEmpty(),
+                "cooldown'da oddiy yo'lovchi buyurtmasi ko'rinmasligi kerak");
+    }
+
+    @Test
+    @DisplayName("Cooldown'da operator (CALL) buyurtma KO'RINADI — matching bypass bilan bir xil")
+    void getAvailableTrips_inCooldown_operatorShown() {
+        driver.setOrderCooldownUntil(LocalDateTime.now().plusSeconds(60));
+        when(tripRepository.findByStatusWithRelations(TripStatus.SEARCHING))
+                .thenReturn(List.of(searching(1L, "CALL")));
 
         List<Map<String, Object>> res = tripService.getAvailableTrips(driverUser);
 
-        assertTrue(res.isEmpty());
+        assertEquals(1, res.size(), "cooldown'da operator buyurtmasi foreground ro'yxatda ko'rinishi kerak");
+        assertEquals(1L, ((Number) res.get(0).get("id")).longValue());
+    }
+
+    @Test
+    @DisplayName("Cooldown'da CALL_TAXOMETER ham KO'RINADI (startsWith(\"CALL\"))")
+    void getAvailableTrips_inCooldown_operatorTaxometerShown() {
+        driver.setOrderCooldownUntil(LocalDateTime.now().plusSeconds(60));
+        when(tripRepository.findByStatusWithRelations(TripStatus.SEARCHING))
+                .thenReturn(List.of(searching(1L, "CALL_TAXOMETER")));
+
+        assertEquals(1, tripService.getAvailableTrips(driverUser).size());
+    }
+
+    @Test
+    @DisplayName("Cooldown'da aralash ro'yxat -> FAQAT operator (CALL) qoladi, yo'lovchi (APP) filtrlanadi")
+    void getAvailableTrips_inCooldown_mixed_onlyOperator() {
+        driver.setOrderCooldownUntil(LocalDateTime.now().plusSeconds(60));
+        when(tripRepository.findByStatusWithRelations(TripStatus.SEARCHING))
+                .thenReturn(List.of(searching(1L, "APP"), searching(2L, "CALL"), searching(3L, "APP")));
+
+        List<Map<String, Object>> res = tripService.getAvailableTrips(driverUser);
+
+        assertEquals(1, res.size());
+        assertEquals(2L, ((Number) res.get(0).get("id")).longValue());
+    }
+
+    @Test
+    @DisplayName("Cooldown YO'Q -> APP ham CALL ham KO'RINADI (bypass faqat cooldown'da ta'sir qiladi)")
+    void getAvailableTrips_notInCooldown_bothShown() {
+        // orderCooldownUntil = null → cooldown faol emas
+        when(tripRepository.findByStatusWithRelations(TripStatus.SEARCHING))
+                .thenReturn(List.of(searching(1L, "APP"), searching(2L, "CALL")));
+
+        assertEquals(2, tripService.getAvailableTrips(driverUser).size());
+    }
+
+    @Test
+    @DisplayName("Band (faol trip) haydovchi cooldown'da operator buyurtmani ham KO'RMAYDI (band darvozasi istisno qilinmaydi)")
+    void getAvailableTrips_busyOverridesOperatorBypass() {
+        driver.setOrderCooldownUntil(LocalDateTime.now().plusSeconds(60));
+        when(tripRepository.existsByDriverIdAndStatusIn(5L, ACTIVE)).thenReturn(true);
+
+        assertTrue(tripService.getAvailableTrips(driverUser).isEmpty());
         verify(tripRepository, never()).findByStatusWithRelations(any());
     }
 }
