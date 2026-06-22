@@ -126,4 +126,28 @@ public class SupportChatController {
             return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
         }
     }
+
+    // ─── Admin (superadmin panel) — HAYDOVCHI support (Texnik yordam), /api/admin/** (ADMIN) ──
+    // Operator endpointlari OPERATOR-only; superadmin panel ADMIN roli — shu sababli ADMIN-accessible mirror.
+    // AYNAN bir xil SupportChatService (driver threadlari) — yangi mantiq/yangi store YO'Q. Feature B.
+    @GetMapping("/api/admin/support/driver-conversations")
+    public ResponseEntity<?> adminDriverConversations() {
+        return ResponseEntity.ok(Map.of("conversations", supportChat.listDriverConversations()));
+    }
+
+    @GetMapping("/api/admin/support/driver/{userId}")
+    public ResponseEntity<?> adminDriverThread(@PathVariable Long userId) {
+        return ResponseEntity.ok(Map.of("messages", supportChat.getThreadForStaff(userId)));
+    }
+
+    @PostMapping("/api/admin/support/driver/{userId}/reply")
+    public ResponseEntity<?> adminDriverReply(@AuthenticationPrincipal User staff,
+                                              @PathVariable Long userId,
+                                              @Valid @RequestBody ChatMessageRequest req) {
+        try {
+            return ResponseEntity.ok(supportChat.replyFromStaff(staff, userId, req.getText()));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+        }
+    }
 }
