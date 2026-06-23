@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.taxi.backend.enums.TransactionType;
 import com.taxi.backend.model.Driver;
 import com.taxi.backend.model.Transaction;
+import com.taxi.backend.repository.ClickTransactionRepository;
 import com.taxi.backend.repository.DriverRepository;
 import com.taxi.backend.repository.TransactionRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -58,6 +59,7 @@ public class PaymentService {
     private final StringRedisTemplate redis;
     private final DriverRepository driverRepository;
     private final TransactionRepository transactionRepository;
+    private final ClickTransactionRepository clickTxRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // Redis ishlamasa, orderlarni in-memory saqlash (24 soat emas, restart gacha)
@@ -66,10 +68,12 @@ public class PaymentService {
 
     public PaymentService(StringRedisTemplate redis,
                           DriverRepository driverRepository,
-                          TransactionRepository transactionRepository) {
+                          TransactionRepository transactionRepository,
+                          ClickTransactionRepository clickTxRepository) {
         this.redis = redis;
         this.driverRepository = driverRepository;
         this.transactionRepository = transactionRepository;
+        this.clickTxRepository = clickTxRepository;
     }
 
     // ─────────────────────────────────────────────
@@ -331,21 +335,36 @@ public class PaymentService {
     // CLICK CALLBACKS
     // ─────────────────────────────────────────────
 
+    /**
+     * Click PREPARE (action=0) callback.
+     * Sign (Click Merchant API, MD5 — amount/action OMITTED edi, V41 da tuzatildi):
+     *   md5(click_trans_id + service_id + SECRET_KEY + merchant_trans_id + amount + action + sign_time)
+     */
+    @Transactional
     public Map<String, Object> handleClickPrepare(Map<String, String> params) {
         String orderId      = params.get("merchant_trans_id");
         String clickTransId = params.get("click_trans_id");
-        String signTime     = params.get("sign_time");
-        String signString   = params.get("sign_string");
+        String amount       = params.getOrDefault("amount", "");
+        String action       = params.getOrDefault("action", "");
+        String signTime     = params.getOrDefault("sign_time", "");
+        String signString   = params.getOrDefault("sign_string", "");
 
-        // MD5 sign: click_trans_id + service_id + secret + merchant_trans_id + error + sign_time
-        String mySign = md5(clickTransId + clickServiceId + clickSecretKey + orderId + "0" + signTime);
-        if (!MessageDigest.isEqual(mySign.getBytes(StandardCharsets.UTF_8),
-                                   signString.getBytes(StandardCharsets.UTF_8))) {
-            return Map.of("error", -1, "error_note", "Sign tekshiruvi xato");
+        String mySign = md5(clickTransId + clickServiceId + clickSecretKey + orderId + amount + action + signTime);
+        if (!constantTimeEquals(mySign, signString)) {
+            return clickError(-1, "Sign tekshiruvi xato", clickTransId, orderId);
         }
 
-        if (getOrder(orderId) == null) {
-            return Map.of("error", -5, "error_note", "Order topilmadi");
+        Map<String, Object> order = getOrder(orderId);
+        if (order == null) {
+            return clickError(-5, "Order topilmadi", clickTransId, orderId);
+        }
+
+        // Bardoshli idempotency ledgeriga PREPARED satr (qayta chaqirilsa NO-OP).
+        try {
+            clickTxRepository.insertIfAbsent(clickTransId, orderId,
+                    toLong(order.get("driverId")), toLong(order.get("amount")), 0, orderId);
+        } catch (Exception e) {
+            log.warning("Click prepare ledger yozuvi o'tkazib yuborildi: " + e.getMessage());
         }
 
         return Map.of(
@@ -357,73 +376,92 @@ public class PaymentService {
         );
     }
 
+    /**
+     * Click COMPLETE (action=1) callback.
+     * Sign (Click Merchant API, MD5 — avval amount/action o'rniga "error" bor edi, tuzatildi):
+     *   md5(click_trans_id + service_id + SECRET_KEY + merchant_trans_id + merchant_prepare_id + amount + action + sign_time)
+     *
+     * IDEMPOTENTLIK (pul xavfsizligi): V41 click_transactions.UNIQUE(click_trans_id) +
+     * shartli CONFIRMED claim. Redis lock faqat tezkor optimizatsiya — TO'G'RILIK DB claim'ga
+     * bog'liq, shuning uchun Redis o'chsa/TTL tugasa va Click qayta-yetkazsa ham double-credit YO'Q.
+     */
     @SuppressWarnings("unchecked")
     @Transactional
     public Map<String, Object> handleClickComplete(Map<String, String> params) {
         String orderId      = params.get("merchant_trans_id");
         String clickTransId = params.get("click_trans_id");
-        String signTime     = params.get("sign_time");
-        String signString   = params.get("sign_string");
+        String prepareId    = params.getOrDefault("merchant_prepare_id", "");
+        String amount       = params.getOrDefault("amount", "");
+        String action       = params.getOrDefault("action", "");
+        String signTime     = params.getOrDefault("sign_time", "");
+        String signString   = params.getOrDefault("sign_string", "");
         String error        = params.getOrDefault("error", "0");
 
-        // MD5 sign: click_trans_id + service_id + secret + merchant_trans_id + merchant_prepare_id + error + sign_time
-        String mySign = md5(clickTransId + clickServiceId + clickSecretKey + orderId + orderId + error + signTime);
-        if (!MessageDigest.isEqual(mySign.getBytes(StandardCharsets.UTF_8),
-                                   signString.getBytes(StandardCharsets.UTF_8))) {
-            return Map.of("error", -1, "error_note", "Sign tekshiruvi xato");
-        }
-
-        if (!"0".equals(error)) {
-            return Map.of("error", 0, "error_note", "Cancelled by user");
+        String mySign = md5(clickTransId + clickServiceId + clickSecretKey + orderId
+                + prepareId + amount + action + signTime);
+        if (!constantTimeEquals(mySign, signString)) {
+            return clickError(-1, "Sign tekshiruvi xato", clickTransId, orderId);
         }
 
         Map<String, Object> order = getOrder(orderId);
         if (order == null) {
-            return Map.of("error", -5, "error_note", "Order topilmadi");
+            return clickError(-5, "Order topilmadi", clickTransId, orderId);
+        }
+        Long driverId    = toLong(order.get("driverId"));
+        long orderAmount = toLong(order.get("amount")); // tiyin (ishonchli — biz yaratgan order)
+
+        // Bardoshli ledgerda satr borligini kafolatlash (PREPARE chaqirilmagan bo'lsa ham).
+        clickTxRepository.insertIfAbsent(clickTransId, orderId, driverId, orderAmount, 1, prepareId);
+
+        // Foydalanuvchi bekor qildi / Click tomonda muvaffaqiyatsiz (error != 0) — kreditlamaymiz.
+        if (!"0".equals(error)) {
+            clickTxRepository.markCancelled(clickTransId, parseIntSafe(error));
+            return clickSuccess(clickTransId, orderId, "Cancelled");
         }
 
-        if (!"PAID".equals(order.get("status"))) {
-            // Atomik lock — race condition himoyasi
-            String lockKey = "payment:lock:" + orderId;
-            Boolean acquired = false;
-            try {
-                acquired = redis.opsForValue().setIfAbsent(lockKey, "1", 30, TimeUnit.SECONDS);
-            } catch (Exception e) {
-                log.warning("Redis lock xato: " + e.getMessage());
-            }
+        // Summa tekshiruvi: Click so'm yuboradi → tiyinga AYNAN aylantirish (BigDecimal — float drift yo'q).
+        long callbackTiyin;
+        try {
+            callbackTiyin = new java.math.BigDecimal(amount).movePointRight(2).longValueExact();
+        } catch (Exception e) {
+            return clickError(-2, "Summa formati xato", clickTransId, orderId);
+        }
+        if (callbackTiyin != orderAmount) {
+            log.warning("Click summa mos kelmadi: callback=" + callbackTiyin
+                    + " order=" + orderAmount + " trans=" + clickTransId);
+            return clickError(-2, "Summa mos kelmaydi", clickTransId, orderId);
+        }
 
-            if (acquired == null || !acquired) {
-                return Map.of("error", 0, "error_note", "Already processing");
-            }
-
-            try {
-                Long driverId = toLong(order.get("driverId"));
-                Long amount = toLong(order.get("amount"));
-
-                // Summa validatsiyasi
-                if (amount <= 0 || amount > 100_000_000_00L) {
-                    return Map.of("error", -3, "error_note", "Noto'g'ri summa");
-                }
-
-                creditDriverBalance(driverId, amount, "Click to'lovi");
-
+        // ── BARDOSHLI IDEMPOTENCY: atomik claim. Faqat g'olib kreditlaydi. ──
+        // Redis lock — tezkor birinchi qatlam, lekin Redis o'chsa BLOKLAMAYDI: DB claim hal qiladi.
+        String lockKey = "payment:lock:" + orderId;
+        boolean lockHeld = false;
+        try {
+            lockHeld = Boolean.TRUE.equals(redis.opsForValue().setIfAbsent(lockKey, "1", 30, TimeUnit.SECONDS));
+        } catch (Exception e) {
+            log.warning("Redis lock mavjud emas (DB claim baribir hal qiladi): " + e.getMessage());
+        }
+        try {
+            int claimed = clickTxRepository.markConfirmedIfNotAlready(clickTransId, orderId);
+            if (claimed == 1) {
+                // G'olib — aynan BIR marta kreditlash (Payme/admin bilan bir xil ledger yo'li).
+                creditDriverBalance(driverId, orderAmount, "Click to'lovi #" + orderId);
                 order.put("status", "PAID");
                 order.put("clickTransId", clickTransId);
-                saveOrder(orderId, order);
-            } catch (Exception e) {
-                log.warning("Click complete error: " + e.getMessage());
-            } finally {
-                try { redis.delete(lockKey); } catch (Exception ignored) {}
+                try { saveOrder(orderId, order); } catch (Exception e) {
+                    log.warning("Click order saqlash xato: " + e.getMessage());
+                }
+                log.info("Click COMPLETE kreditlandi: driverId=" + driverId + " +" + orderAmount
+                        + " tiyin trans=" + clickTransId);
+            } else {
+                // Qayta-yetkazish / duplicate — allaqachon CONFIRMED. Idempotent: kreditlamaymiz.
+                log.info("Click COMPLETE qayta-yetkazish e'tiborsiz qoldirildi (idempotent): trans=" + clickTransId);
             }
+        } finally {
+            if (lockHeld) { try { redis.delete(lockKey); } catch (Exception ignored) {} }
         }
 
-        return Map.of(
-                "click_trans_id",     clickTransId,
-                "merchant_trans_id",  orderId,
-                "merchant_confirm_id", orderId,
-                "error",              0,
-                "error_note",         "Success"
-        );
+        return clickSuccess(clickTransId, orderId, "Success");
     }
 
     // ─────────────────────────────────────────────
@@ -536,6 +574,39 @@ public class PaymentService {
         error.put("code", code);
         error.put("message", Map.of("ru", message, "uz", message, "en", message));
         return Map.of("id", id != null ? id : 0, "error", error);
+    }
+
+    // ── Click javob / yordamchi metodlari ──
+
+    private Map<String, Object> clickSuccess(String clickTransId, String orderId, String note) {
+        return Map.of(
+                "click_trans_id",      clickTransId,
+                "merchant_trans_id",   orderId,
+                "merchant_confirm_id", orderId,
+                "error",               0,
+                "error_note",          note
+        );
+    }
+
+    private Map<String, Object> clickError(int code, String note, String clickTransId, String orderId) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("click_trans_id", clickTransId != null ? clickTransId : "");
+        m.put("merchant_trans_id", orderId != null ? orderId : "");
+        m.put("error", code);
+        m.put("error_note", note);
+        return m;
+    }
+
+    /** Timing-safe string tenglik (timing attack himoyasi). null = false. */
+    private boolean constantTimeEquals(String a, String b) {
+        if (a == null || b == null) return false;
+        return MessageDigest.isEqual(
+                a.getBytes(StandardCharsets.UTF_8),
+                b.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private int parseIntSafe(String s) {
+        try { return Integer.parseInt(s.trim()); } catch (Exception e) { return -1; }
     }
 
     private String md5(String input) {
