@@ -71,6 +71,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/payment/payme",
                                 "/api/payment/click/prepare",
                                 "/api/payment/click/complete").permitAll()
+                        // Click ADVANCED SHOP callback'lari (alohida service_id, alohida ledger).
+                        .requestMatchers("/api/payment/click-shop/**").permitAll()
                         // Swagger — faqat ADMIN yoki dev profilida ochiq
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html",
                                 "/v3/api-docs/**").permitAll()
