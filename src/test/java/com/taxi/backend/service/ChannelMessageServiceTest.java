@@ -80,6 +80,56 @@ class ChannelMessageServiceTest {
     }
 
     @Test
+    @DisplayName("Band 7 — sendToChannel DRIVER + driverId -> faqat 1 ta haydovchiga 1 satr (driverCode javobda)")
+    void sendToChannel_driverTarget_singleDriverFanout() {
+        Driver d = new Driver();
+        d.setId(42L);
+        d.setDriverCode("TZ-0042");
+        when(driverRepository.findById(42L)).thenReturn(Optional.of(d));
+
+        Map<String, Object> res = service.sendToChannel("BONUSLAR", "Maxsus", "Faqat senga", "DRIVER", 42L, admin);
+
+        assertEquals(1, res.get("sent"));
+        assertEquals("DRIVER", res.get("target"));
+        assertEquals("TZ-0042", res.get("driverCode"));
+        // Boshqa auditoriya querilari chaqirilmasligi kerak
+        verify(driverRepository, never()).findAll();
+        verify(driverRepository, never()).findByIsOnlineTrue();
+        verify(driverRepository, never()).findByIsOnlineFalse();
+        verify(repo).saveAll(any());
+    }
+
+    @Test
+    @DisplayName("Band 7 — sendToChannel DRIVER + driverId yo'q -> rad qilish, hech narsa saqlanmaydi")
+    void sendToChannel_driverTarget_missingId_throws() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.sendToChannel("BONUSLAR", null, "x", "DRIVER", null, admin));
+        verify(repo, never()).saveAll(any());
+        verifyNoInteractions(repo);
+    }
+
+    @Test
+    @DisplayName("Band 7 — sendToChannel DRIVER + mavjud bo'lmagan driverId -> rad qilish")
+    void sendToChannel_driverTarget_unknownDriver_throws() {
+        when(driverRepository.findById(9999L)).thenReturn(Optional.empty());
+        assertThrows(IllegalArgumentException.class,
+                () -> service.sendToChannel("BONUSLAR", null, "x", "DRIVER", 9999L, admin));
+        verify(repo, never()).saveAll(any());
+    }
+
+    @Test
+    @DisplayName("Eski 5-parametrli sendToChannel signaturasi backward-compat — ALL bilan ishlaydi")
+    void sendToChannel_legacy5argOverload_stillWorks() {
+        Driver d1 = new Driver(); d1.setId(5L);
+        when(driverRepository.findAll()).thenReturn(List.of(d1));
+
+        Map<String, Object> res = service.sendToChannel("BONUSLAR", null, "matn", "ALL", admin);
+
+        assertEquals(1, res.get("sent"));
+        verify(driverRepository).findAll();
+    }
+
+    @Test
     @DisplayName("unreadByChannel -> barcha 5 broadcast kanal 0 bilan to'ldiriladi, mavjudlari hisoblanadi")
     void unreadByChannel_fillsAllBroadcastChannels() {
         User u = new User(); u.setId(100L);

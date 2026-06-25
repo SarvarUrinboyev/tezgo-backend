@@ -69,7 +69,8 @@ public class ChannelMessageController {
     public ResponseEntity<?> adminSend(@AuthenticationPrincipal User admin, @PathVariable String channel,
                                        @Valid @RequestBody ChannelSendRequest req) {
         try {
-            return ResponseEntity.ok(service.sendToChannel(channel, req.getTitle(), req.getBody(), req.getTarget(), admin));
+            return ResponseEntity.ok(service.sendToChannel(channel, req.getTitle(), req.getBody(),
+                    req.getTarget(), req.getDriverId(), admin));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
         }

@@ -37,9 +37,24 @@ public class ChannelMessageService {
         this.driverRepository = driverRepository;
     }
 
-    /** Admin kanalga xabar yuboradi — har targetlangan haydovchiga bitta channel_messages satri. */
+    /** Admin kanalga xabar yuboradi — eski (driverId yo'q) signatura. ALL/ACTIVE/OFFLINE uchun. */
     @Transactional
     public Map<String, Object> sendToChannel(String channel, String title, String body, String target, User admin) {
+        return sendToChannel(channel, title, body, target, null, admin);
+    }
+
+    /**
+     * Band 7 — Admin kanalga xabar yuboradi. target=DRIVER + driverId set bo'lsa, FAQAT shu
+     * haydovchiga 1 ta channel_messages satri ochiladi (driver app polling orqali ko'radi).
+     * Boshqa target qiymatlari (ALL/ACTIVE/OFFLINE) eski xulqni saqlaydi.
+     *
+     * Push YO'Q — bu kanal REST/poll xulqida ishlaydi (TEXNIK_YORDAM bilan bir xil); FSI/order-alert
+     * tegmaydi. SupportChatService bilan parallel yo'l: bu broadcast (1 yo'nalishli), u esa
+     * 2 tomonlama murojaat.
+     */
+    @Transactional
+    public Map<String, Object> sendToChannel(String channel, String title, String body, String target,
+            Long driverId, User admin) {
         if (!MessageChannel.isBroadcastChannel(channel)) {
             throw new IllegalArgumentException("Bu kanalga broadcast qilib bo'lmaydi: " + channel
                     + " (TEXNIK_YORDAM 2 tomonlama — operator panelidan javob beriladi)");
@@ -51,7 +66,7 @@ public class ChannelMessageService {
         if (cleanBody.length() > MAX_BODY) cleanBody = cleanBody.substring(0, MAX_BODY);
         String cleanTitle = (title == null || title.isBlank()) ? null : title.trim();
 
-        List<Driver> drivers = resolveAudience(target);
+        List<Driver> drivers = resolveAudience(target, driverId);
         Long adminId = admin != null ? admin.getId() : null;
         LocalDateTime now = LocalDateTime.now();
 
@@ -67,16 +82,36 @@ public class ChannelMessageService {
             batch.add(m);
         }
         repo.saveAll(batch);
-        log.info("[CHANNEL] Admin {} '{}' kanaliga {} ta haydovchiga xabar yubordi (target={})",
-                adminId, channel, batch.size(), target);
-        return Map.of("channel", channel, "sent", batch.size(), "target", target == null ? "ALL" : target);
+        log.info("[CHANNEL] Admin {} '{}' kanaliga {} ta haydovchiga xabar yubordi (target={}, driverId={})",
+                adminId, channel, batch.size(), target, driverId);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("channel", channel);
+        out.put("sent", batch.size());
+        out.put("target", target == null ? "ALL" : target);
+        if (drivers.size() == 1 && drivers.get(0).getDriverCode() != null) {
+            out.put("driverCode", drivers.get(0).getDriverCode());
+        }
+        return out;
     }
 
-    private List<Driver> resolveAudience(String target) {
+    /**
+     * target bo'yicha auditoriyani aniqlash. Band 7: target=DRIVER + driverId set bo'lsa, 1 ta
+     * haydovchini qaytaradi (mavjudligini tekshiramiz). Driver topilmasa yoki driverId yo'q bo'lsa
+     * IllegalArgumentException.
+     */
+    private List<Driver> resolveAudience(String target, Long driverId) {
         String t = target == null ? "ALL" : target.toUpperCase();
         switch (t) {
             case "ACTIVE":  return driverRepository.findByIsOnlineTrue();
             case "OFFLINE": return driverRepository.findByIsOnlineFalse();
+            case "DRIVER": {
+                if (driverId == null) {
+                    throw new IllegalArgumentException("target=DRIVER uchun driverId majburiy");
+                }
+                Driver d = driverRepository.findById(driverId)
+                        .orElseThrow(() -> new IllegalArgumentException("Haydovchi topilmadi: id=" + driverId));
+                return List.of(d);
+            }
             default:        return driverRepository.findAll();
         }
     }

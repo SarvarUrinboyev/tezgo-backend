@@ -14,7 +14,10 @@ public class ChannelSendRequest {
     private String body;
 
     @Size(max = 20)
-    private String target = "ALL"; // ALL | ACTIVE | OFFLINE
+    private String target = "ALL"; // ALL | ACTIVE | OFFLINE | DRIVER
+
+    /** Band 7 — target=DRIVER bo'lganida MAJBURIY: Driver primary key. Admin paneli driver_code (TZ-XXXX) ni shu id ga aylantirib yuboradi. */
+    private Long driverId;
 
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
@@ -22,4 +25,6 @@ public class ChannelSendRequest {
     public void setBody(String body) { this.body = body; }
     public String getTarget() { return target; }
     public void setTarget(String target) { this.target = target; }
+    public Long getDriverId() { return driverId; }
+    public void setDriverId(Long driverId) { this.driverId = driverId; }
 }

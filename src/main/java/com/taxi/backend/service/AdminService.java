@@ -219,21 +219,73 @@ public class AdminService {
         return Map.of("message", "Rasm rad etildi");
     }
 
-    /** Broadcast xabar yuborish */
+    /** Broadcast xabar yuborish (target=ALL/ACTIVE/OFFLINE). Eski API — driverId yo'q.
+     *  Yangi DRIVER target uchun {@link #sendBroadcast(String, String, String, Long, User)} ishlatilsin. */
     @Transactional
     public Map<String, Object> sendBroadcast(String title, String content, String target, User admin) {
+        return sendBroadcast(title, content, target, null, admin);
+    }
+
+    /**
+     * Band 7 — Broadcast xabar yuborish. target=SPECIFIC (yoki "DRIVER" → SPECIFIC) va driverId
+     * berilgan bo'lsa, FAQAT shu haydovchiga jo'natiladi (entity'da targetDriverIds tarkibida
+     * 1 ta id, WS yo'li /topic/broadcast/{driverId}). Aks holda mavjud /topic/broadcast (global)
+     * yo'li bilan jo'natiladi — eski xulq saqlanadi.
+     *
+     * Entity BroadcastMessage.target column (length=20) hujjatlangan qiymatlar: ALL | ACTIVE |
+     * OFFLINE | SPECIFIC. targetDriverIds tarkibi V28__create_broadcast_targets.sql migration
+     * orqali broadcast_targets jadvalida (allaqachon mavjud).
+     *
+     * Driver app /topic/broadcast/{driverId} ga obuna bo'lishi kerak — OTA orqali (websocket.ts).
+     * Bu obuna driver primary key (drivers PK) asosida; mavjud /topic/driver/{driverId}
+     * (TripNotificationHelper) bilan moslangan.
+     */
+    @Transactional
+    public Map<String, Object> sendBroadcast(String title, String content, String target,
+            Long driverId, User admin) {
+        String normalizedTarget = (target != null && !target.isBlank()) ? target.trim().toUpperCase() : "ALL";
+        // "DRIVER" qabul qilamiz lekin entity'da hujjatlangan SPECIFIC qiymatiga normalizatsiya.
+        if ("DRIVER".equals(normalizedTarget)) normalizedTarget = "SPECIFIC";
+        boolean singleDriver = "SPECIFIC".equals(normalizedTarget);
+        if (singleDriver && driverId == null) {
+            throw new RuntimeException("target=SPECIFIC uchun driverId majburiy");
+        }
+        Driver targetDriver = null;
+        if (singleDriver) {
+            targetDriver = driverRepository.findById(driverId)
+                    .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi: id=" + driverId));
+        }
+
         BroadcastMessage msg = new BroadcastMessage();
         msg.setTitle(title);
         msg.setContent(content);
-        msg.setTarget(target);
+        msg.setTarget(normalizedTarget);
+        if (singleDriver) {
+            msg.setTargetDriverIds(java.util.List.of(driverId));
+        }
         msg.setSentBy(admin);
         broadcastMessageRepository.save(msg);
 
-        // WebSocket orqali online haydovchilarga yuborish
-        messagingTemplate.convertAndSend("/topic/broadcast",
-                Map.of("title", title != null ? title : "", "content", content, "sentAt", msg.getSentAt().toString()));
+        Map<String, Object> wsPayload = new java.util.HashMap<>();
+        wsPayload.put("title", title != null ? title : "");
+        wsPayload.put("content", content);
+        wsPayload.put("sentAt", msg.getSentAt().toString());
+        if (singleDriver) {
+            wsPayload.put("targetedDriverId", driverId);
+            messagingTemplate.convertAndSend("/topic/broadcast/" + driverId, wsPayload);
+        } else {
+            messagingTemplate.convertAndSend("/topic/broadcast", wsPayload);
+        }
 
-        return Map.of("message", "Xabar yuborildi", "id", msg.getId());
+        java.util.LinkedHashMap<String, Object> resp = new java.util.LinkedHashMap<>();
+        resp.put("message", "Xabar yuborildi");
+        resp.put("id", msg.getId());
+        resp.put("target", msg.getTarget());
+        if (targetDriver != null) {
+            resp.put("driverCode", targetDriver.getDriverCode());
+            resp.put("driverName", targetDriver.getUser() != null ? targetDriver.getUser().getName() : null);
+        }
+        return resp;
     }
 
     /** Barcha buyurtmalar (source filter: null = barchasi) */

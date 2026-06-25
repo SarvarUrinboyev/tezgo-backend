@@ -234,14 +234,15 @@ public class AdminController {
         return ResponseEntity.ok(adminService.rejectPhoto(id, req.getReason(), admin));
     }
 
-    /** Broadcast xabar yuborish */
+    /** Broadcast xabar yuborish. target=DRIVER bo'lsa, driverId majburiy (faqat o'sha haydovchiga yuboriladi). */
     @PostMapping("/messages/broadcast")
     public ResponseEntity<?> broadcast(@Valid @RequestBody com.taxi.backend.dto.BroadcastRequest req,
             @AuthenticationPrincipal User admin) {
         try {
             return ResponseEntity.ok(adminService.sendBroadcast(
                     req.getTitle(), req.getContent(),
-                    req.getTarget() != null ? req.getTarget() : "ALL", admin));
+                    req.getTarget() != null ? req.getTarget() : "ALL",
+                    req.getDriverId(), admin));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

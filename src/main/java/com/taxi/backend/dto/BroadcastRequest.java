@@ -13,7 +13,10 @@ public class BroadcastRequest {
     private String content;
 
     @Size(max = 20)
-    private String target = "ALL"; // ALL, ACTIVE, OFFLINE
+    private String target = "ALL"; // ALL, ACTIVE, OFFLINE, DRIVER
+
+    /** Band 7 — agar target=DRIVER bo'lsa, MAJBURIY: aniq Driver primary key. Admin paneli driver_code (TZ-XXXX) ni shu id ga aylantiradi. */
+    private Long driverId;
 
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
@@ -21,4 +24,6 @@ public class BroadcastRequest {
     public void setContent(String content) { this.content = content; }
     public String getTarget() { return target; }
     public void setTarget(String target) { this.target = target; }
+    public Long getDriverId() { return driverId; }
+    public void setDriverId(Long driverId) { this.driverId = driverId; }
 }
