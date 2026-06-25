@@ -211,15 +211,12 @@ public class AuthService {
             userRepository.save(user);
         }
 
-        // Haydovchi uchun Driver record yaratish
-        if (role == Role.DRIVER && driverRepository.findByUserId(user.getId()).isEmpty()) {
-            Driver driver = new Driver();
-            driver.setUser(user);
-            // DB sequence — concurrent registrations uchun atomik va takrorlanmaydigan
-            driver.setDriverCode(driverRepository.nextDriverCode());
-            driverRepository.save(driver);
-            initDriverServices(driver);
-        }
+        // Driver row OTP verify'da YARATILMAYDI — faqat User. Driver row endi FAQAT registerDriver
+        // (wizard'ning final submit'i) chaqirilganda yaratiladi. Sabab: ilgari bu yerda yaratilgan
+        // bo'sh Driver row'lar admin panel'da chala-yarim ko'rinardi (haydovchi wizard'ni tashlab
+        // ketsa ham TZ-XXXX kod va bo'sh ma'lumotlar bilan satr qolardi). isRegistered=false
+        // (driver row yo'q) → driver app foydalanuvchini RegisterScreen wizard'iga yo'naltiradi.
+        // initDriverServices ham endi registerDriver ichida — wasCreated guard bilan.
 
         // Rozilik yozuvini saqlash (UZ qonun talabi). Alohida tranzaksiyada — login buzilmaydi.
         recordLoginConsent(user);
