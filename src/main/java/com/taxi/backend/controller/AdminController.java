@@ -439,6 +439,45 @@ public class AdminController {
         }
     }
 
+    /** Band 5 — Admin SEARCHING buyurtmaning tarifini almashtirish. */
+    @PutMapping("/trips/{tripId}/tariff")
+    public ResponseEntity<?> adminChangeTripTariff(@PathVariable Long tripId,
+            @Valid @RequestBody com.taxi.backend.dto.AdminTripTariffRequest req) {
+        try {
+            return ResponseEntity.ok(adminService.adminChangeTripTariff(tripId, req.getTariffId()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /** Band 5 — Admin SEARCHING buyurtmaning A (olib ketish) va B (manzil) ma'lumotlarini tahrirlash. */
+    @PutMapping("/trips/{tripId}/addresses")
+    public ResponseEntity<?> adminEditTripAddresses(@PathVariable Long tripId,
+            @Valid @RequestBody com.taxi.backend.dto.AdminTripAddressesRequest req) {
+        try {
+            return ResponseEntity.ok(adminService.adminEditTripAddresses(tripId,
+                    req.getFromAddress(), req.getFromLat(), req.getFromLon(),
+                    req.getToAddress(), req.getToLat(), req.getToLon()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * Band 5 — Admin SEARCHING buyurtmani aniq haydovchiga yo'naltirish.
+     * Mavjud data-only dispatch yo'li orqali (PushNotificationService.notifyDriver, type=ORDER_PUSH).
+     * Yangi push yo'li yo'q, FSI/order-alert tegmaydi.
+     */
+    @PostMapping("/trips/{tripId}/reassign")
+    public ResponseEntity<?> adminReassignTrip(@PathVariable Long tripId,
+            @Valid @RequestBody com.taxi.backend.dto.AdminTripReassignRequest req) {
+        try {
+            return ResponseEntity.ok(adminService.adminReassignTripToDriver(tripId, req.getDriverId()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     /** OTP Monitor — so'nggi 30 daqiqa OTP kodlari */
     @GetMapping("/otp/monitor")
     public ResponseEntity<?> otpMonitor() {

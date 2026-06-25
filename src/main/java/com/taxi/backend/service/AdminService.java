@@ -38,6 +38,9 @@ public class AdminService {
     private final RatingRepository ratingRepository;
     private final TransactionRepository transactionRepository;
     private final ChatService chatService;
+    // Band 5 (admin order mgmt) — tariff change + reassign push
+    private final TariffRepository tariffRepository;
+    private final AsyncNotificationService asyncNotifier;
 
     public AdminService(DriverRepository driverRepository,
             DriverPhotoRepository driverPhotoRepository,
@@ -48,7 +51,9 @@ public class AdminService {
             SimpMessagingTemplate messagingTemplate,
             RatingRepository ratingRepository,
             TransactionRepository transactionRepository,
-            ChatService chatService) {
+            ChatService chatService,
+            TariffRepository tariffRepository,
+            AsyncNotificationService asyncNotifier) {
         this.driverRepository = driverRepository;
         this.driverPhotoRepository = driverPhotoRepository;
         this.driverServiceRepository = driverServiceRepository;
@@ -59,6 +64,8 @@ public class AdminService {
         this.ratingRepository = ratingRepository;
         this.transactionRepository = transactionRepository;
         this.chatService = chatService;
+        this.tariffRepository = tariffRepository;
+        this.asyncNotifier = asyncNotifier;
     }
 
     /** Dashboard statistika */
@@ -368,6 +375,169 @@ public class AdminService {
         result.put("status", "CANCELLED_BY_ADMIN");
         result.put("cancelReason", reason.trim());
         result.put("message", "Buyurtma muvaffaqiyatli bekor qilindi");
+        return result;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Band 5 — Admin order management (per-order edits + reassign by driver ID)
+    // ─────────────────────────────────────────────────────────────────────────
+    //
+    // All three operations are RESTRICTED to SEARCHING status (driver not yet
+    // accepted). After a driver has accepted, the trip is a contract — admin
+    // can still cancel via adminCancelTrip(), but not change tariff/addresses
+    // or hand it to a different driver mid-flight.
+    //
+    // Reassign reuses the EXISTING data-only dispatch path
+    // (asyncNotifier.pushDriverAsync -> PushNotificationService.notifyDriver
+    // with type=ORDER_PUSH). It does NOT create a new push channel and does
+    // NOT touch the 5 FSI Kotlin files or the order-alert chain.
+
+    /** Admin — SEARCHING buyurtmaga yangi tarif belgilash. basePrice yangi tarifdan olinadi. */
+    @Transactional
+    public Map<String, Object> adminChangeTripTariff(Long tripId, Long tariffId) {
+        Trip trip = tripRepository.findById(tripId)
+                .orElseThrow(() -> new RuntimeException("Buyurtma topilmadi"));
+        if (trip.getStatus() != TripStatus.SEARCHING) {
+            throw new RuntimeException("Tarifni faqat SEARCHING (haydovchi qabul qilmagan) statusda almashtirish mumkin: " + trip.getStatus().name());
+        }
+        com.taxi.backend.model.Tariff tariff = tariffRepository.findById(tariffId)
+                .orElseThrow(() -> new RuntimeException("Tarif topilmadi: " + tariffId));
+
+        Long oldBasePrice = trip.getBasePrice();
+        trip.setTariff(tariff);
+        // basePrice yangi tarifdan; totalPrice DOKAZANMAYDI — masofa o'zgarmagan, lekin
+        // admin yangi tarifda re-create qilishni hohlasa: alohida endpoint orqali yoki
+        // qayta yaratish. Hozircha basePrice deltasini totalPrice'ga ham qo'shamiz.
+        Long newBasePrice = tariff.getBasePrice() != null ? tariff.getBasePrice() : 0L;
+        trip.setBasePrice(newBasePrice);
+        // totalPrice qayta hisobi: eski totalga (yangi basePrice - eski basePrice) qo'shamiz.
+        // (extraPrice + waiting + distance/duration komponentlari saqlanadi).
+        if (trip.getTotalPrice() != null && oldBasePrice != null) {
+            long delta = newBasePrice - oldBasePrice;
+            trip.setTotalPrice(Math.max(0L, trip.getTotalPrice() + delta));
+        } else if (trip.getTotalPrice() == null) {
+            trip.setTotalPrice(newBasePrice);
+        }
+        tripRepository.save(trip);
+
+        java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("tripId", tripId);
+        result.put("tariffId", tariff.getId());
+        result.put("tariffName", tariff.getName());
+        result.put("basePrice", trip.getBasePrice());
+        result.put("totalPrice", trip.getTotalPrice());
+        result.put("message", "Tarif almashtirildi");
+        return result;
+    }
+
+    /** Admin — SEARCHING buyurtmaning A (olib ketish) va B (manzil) ma'lumotlarini tahrirlash. */
+    @Transactional
+    public Map<String, Object> adminEditTripAddresses(Long tripId,
+            String fromAddress, Double fromLat, Double fromLon,
+            String toAddress, Double toLat, Double toLon) {
+        Trip trip = tripRepository.findById(tripId)
+                .orElseThrow(() -> new RuntimeException("Buyurtma topilmadi"));
+        if (trip.getStatus() != TripStatus.SEARCHING) {
+            throw new RuntimeException("Manzillarni faqat SEARCHING statusda tahrirlash mumkin: " + trip.getStatus().name());
+        }
+        if (fromAddress == null || fromAddress.isBlank()) {
+            throw new RuntimeException("Olib ketish manzili bo'sh bo'lmasligi kerak");
+        }
+        if (fromLat == null || fromLon == null) {
+            throw new RuntimeException("Olib ketish koordinatalari (lat/lon) majburiy");
+        }
+        trip.setFromAddress(fromAddress.trim());
+        trip.setFromLat(fromLat);
+        trip.setFromLon(fromLon);
+        if (toAddress != null) trip.setToAddress(toAddress.trim().isEmpty() ? null : toAddress.trim());
+        if (toLat != null) trip.setToLat(toLat);
+        if (toLon != null) trip.setToLon(toLon);
+        tripRepository.save(trip);
+
+        java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("tripId", tripId);
+        result.put("fromAddress", trip.getFromAddress());
+        result.put("fromLat", trip.getFromLat());
+        result.put("fromLon", trip.getFromLon());
+        result.put("toAddress", trip.getToAddress());
+        result.put("toLat", trip.getToLat());
+        result.put("toLon", trip.getToLon());
+        result.put("message", "Manzillar yangilandi");
+        return result;
+    }
+
+    /**
+     * Admin — SEARCHING buyurtmani aniq haydovchiga yo'naltirish.
+     *
+     * Push xabari MAVJUD data-only dispatch yo'lidan o'tadi (asyncNotifier.pushDriverAsync ->
+     * PushNotificationService.notifyDriver, type=ORDER_PUSH). Yangi push yo'li yaratilmaydi,
+     * 5 FSI Kotlin fayli + order-alert zanjiri tegmaydi.
+     *
+     * Trip statusi SEARCHING'da qoladi — driver acceptTrip orqali qabul qilsa, mavjud
+     * optimistic lock yo'li bilan tayinlanadi. Bu admin BIRTA haydovchini ko'zga qaratish vositasi,
+     * majburiy tayinlash emas — drayver baribir buyurtmani rad qilishi mumkin.
+     */
+    @Transactional
+    public Map<String, Object> adminReassignTripToDriver(Long tripId, Long driverId) {
+        Trip trip = tripRepository.findById(tripId)
+                .orElseThrow(() -> new RuntimeException("Buyurtma topilmadi"));
+        if (trip.getStatus() != TripStatus.SEARCHING) {
+            throw new RuntimeException("Buyurtmani faqat SEARCHING statusda boshqa haydovchiga yo'naltirish mumkin: " + trip.getStatus().name());
+        }
+        Driver driver = driverRepository.findById(driverId)
+                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi: id=" + driverId));
+        if (driver.getStatus() != DriverStatus.ACTIVE) {
+            throw new RuntimeException("Haydovchi ACTIVE emas (status=" + driver.getStatus().name() + ")");
+        }
+
+        // Mavjud TripNotificationHelper.sendNewOrderNotification ichidagi payload bilan AYNAN bir xil
+        // shaklda quramiz. Bu zarur — driver app'ning IncomingOrderModal'i va native TezgoMessagingService
+        // ushbu maydonlarni kutadi. Mavjud helper'ga tegmaymiz (order-alert no-touch).
+        long offerExpiresAt = System.currentTimeMillis() + 15_000L; // 15s offer (TripNotificationHelper OFFER_TTL_MS bilan moslangan)
+        long priceSom = (trip.getTotalPrice() != null ? trip.getTotalPrice() : 0L) / 100;
+
+        // WebSocket xabar — driver app foreground'da bo'lsa IncomingOrderModal'ni ochish
+        Map<String, Object> wsMsg = new java.util.HashMap<>();
+        wsMsg.put("type", "NEW_ORDER");
+        wsMsg.put("tripId", trip.getId());
+        wsMsg.put("fromAddress", trip.getFromAddress());
+        wsMsg.put("toAddress", trip.getToAddress() != null ? trip.getToAddress() : "—");
+        wsMsg.put("price", priceSom);
+        wsMsg.put("offerExpiresAt", offerExpiresAt);
+        asyncNotifier.notifyDriverAsync(driverId, wsMsg);
+
+        // FCM data-only push — app yopiq/fon/qulflangan holatda native FSI ochish
+        Map<String, Object> pushData = new java.util.HashMap<>();
+        pushData.put("tripId", trip.getId());
+        pushData.put("type", "ORDER_PUSH");
+        pushData.put("event", "ORDER_PUSH");
+        pushData.put("fromAddress", trip.getFromAddress() != null ? trip.getFromAddress() : "manzilsiz");
+        pushData.put("toAddress", trip.getToAddress() != null ? trip.getToAddress() : "manzilsiz");
+        pushData.put("price", priceSom);
+        pushData.put("fromLat", trip.getFromLat() != null ? trip.getFromLat() : 0.0);
+        pushData.put("fromLon", trip.getFromLon() != null ? trip.getFromLon() : 0.0);
+        pushData.put("toLat", trip.getToLat() != null ? trip.getToLat() : 0.0);
+        pushData.put("toLon", trip.getToLon() != null ? trip.getToLon() : 0.0);
+        try {
+            if (trip.getTariff() != null) {
+                pushData.put("tariffName", trip.getTariff().getName());
+                Long base = trip.getTariff().getBasePrice();
+                pushData.put("calloutFee", base != null ? base : 0L);
+            }
+        } catch (Exception ignored) { /* lazy load — silent fallback */ }
+        pushData.put("offerExpiresAt", offerExpiresAt);
+        // title/body null — data-only kafolatlanadi. PushNotificationService isOrder()=true
+        // ekanini ichida tekshiradi va sof data-only payload yuboradi.
+        asyncNotifier.pushDriverAsync(driverId, null, null, pushData);
+
+        java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("tripId", tripId);
+        result.put("driverId", driverId);
+        result.put("driverCode", driver.getDriverCode());
+        result.put("driverName", driver.getUser() != null ? driver.getUser().getName() : null);
+        result.put("status", trip.getStatus().name());
+        result.put("offerExpiresAt", offerExpiresAt);
+        result.put("message", "Buyurtma haydovchiga yuborildi");
         return result;
     }
 
