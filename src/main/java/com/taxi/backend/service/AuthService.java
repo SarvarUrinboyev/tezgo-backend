@@ -1,5 +1,6 @@
 package com.taxi.backend.service;
 
+import com.taxi.backend.enums.DriverStatus;
 import com.taxi.backend.enums.Role;
 import com.taxi.backend.enums.ServiceType;
 import com.taxi.backend.model.*;
@@ -216,7 +217,6 @@ public class AuthService {
         // bo'sh Driver row'lar admin panel'da chala-yarim ko'rinardi (haydovchi wizard'ni tashlab
         // ketsa ham TZ-XXXX kod va bo'sh ma'lumotlar bilan satr qolardi). isRegistered=false
         // (driver row yo'q) → driver app foydalanuvchini RegisterScreen wizard'iga yo'naltiradi.
-        // initDriverServices ham endi registerDriver ichida — wasCreated guard bilan.
 
         // Rozilik yozuvini saqlash (UZ qonun talabi). Alohida tranzaksiyada — login buzilmaydi.
         recordLoginConsent(user);
@@ -291,9 +291,14 @@ public class AuthService {
         }
     }
 
-    /** Haydovchi uchun barcha xizmatlarni boshlang'ich qiymat bilan yaratish */
+    /**
+     * Haydovchi uchun barcha xizmatlarni boshlang'ich qiymat bilan yaratish — IDEMPOTENT.
+     * Har bir (driver_id, service_type) juftligi uchun mavjudlikni tekshirib, faqat
+     * yo'q bo'lsa yangi qator yaratamiz. Shu sababli qayta chaqirilsa duplicate yo'q.
+     */
     private void initDriverServices(Driver driver) {
         for (ServiceType type : ServiceType.values()) {
+            if (driverServiceRepository.findByDriverIdAndServiceType(driver.getId(), type).isPresent()) continue;
             com.taxi.backend.model.DriverService ds = new com.taxi.backend.model.DriverService(
                     driver, type, type.getDefaultPriceTiyin());
             driverServiceRepository.save(ds);
@@ -394,10 +399,16 @@ public class AuthService {
         user.setName(name);
         userRepository.save(user);
 
+        // YANGI driver bo'lsa flag'ni ko'taramiz — keyin faqat YANGI uchun initDriverServices
+        // chaqirilishini ta'minlash uchun (mavjud driver re-submit qilsa duplicate row'lar yo'q).
+        final boolean[] wasCreated = { false };
         Driver driver = driverRepository.findByUserId(user.getId()).orElseGet(() -> {
             Driver d = new Driver();
             d.setUser(user);
             d.setDriverCode(driverRepository.nextDriverCode());
+            // Status'ni AYNAN PENDING qilib qo'yamiz (schema default ham PENDING — defense in depth).
+            d.setStatus(DriverStatus.PENDING);
+            wasCreated[0] = true;
             return d;
         });
 
@@ -411,6 +422,14 @@ public class AuthService {
         driver.setAddress(address);
         driver.setTechPassportNumber(techPassportNumber);
         driverRepository.save(driver);
+
+        // YANGI driver uchun xizmat (driver_services) qatorlarini boshlang'ich narxlar bilan
+        // yaratamiz. Avval verifyOtp'da chaqirilardi; endi bu yerda — chunki driver row endi
+        // FAQAT bu yerda yaratiladi. wasCreated guard + initDriverServices idempotent bo'lgani
+        // sababli mavjud driver qayta submit qilsa duplicate row hosil bo'lmaydi.
+        if (wasCreated[0]) {
+            initDriverServices(driver);
+        }
 
         // Pasport/biometrik ma'lumotlar uchun alohida rozilik yozuvi (UZ qonun)
         recordDriverDocsConsent(user);
