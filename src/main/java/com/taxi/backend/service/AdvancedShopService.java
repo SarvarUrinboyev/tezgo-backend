@@ -24,6 +24,18 @@ import java.util.logging.Logger;
 /**
  * Click ADVANCED SHOP integration service.
  *
+ * <p><b>Integration handover (2026-06-26):</b> Sukhrob Sattarov (Click) confirmed on
+ * Telegram that (1) the merchant chooses the parameter name for the driver/account
+ * identifier in getinfo and Click forwards whatever we specify — we pin {@code "account"}
+ * (see {@link #CANONICAL_IDENTIFIER_KEY}), (2) only the three live endpoints
+ * {@code /getinfo}, {@code /prepare}, {@code /complete} are required (check + compare
+ * remain as harmless stubs for any future reconciliation Click may add), (3) there is no
+ * sandbox — Click validates against prod by sending a sample request after we declare
+ * the service ready. The fail-closed signature default
+ * ({@code click.advanced-shop-secret-key=""} → rejects every signature) makes the
+ * endpoints safe to deploy before Click's go-live without risking a stray real callback
+ * being accepted.
+ *
  * <p>FULLY ISOLATED from {@link PaymentService} (Merchant API). This service:
  * <ul>
  *   <li>Has its own {@code service_id} + {@code secret_key} config keys
@@ -57,13 +69,30 @@ public class AdvancedShopService {
     private static final Logger log = Logger.getLogger(AdvancedShopService.class.getName());
 
     /**
+     * Canonical parameter name we asked Click to send for the driver identifier.
+     *
+     * <p>Click's representative (Sukhrob Sattarov, Telegram, 2026-06-26) confirmed
+     * that the merchant chooses the parameter name and Click forwards whatever we
+     * specify. We pin {@code "account"} as the canonical name — to be communicated
+     * to Click in the integration handover. This is also what the user sees in the
+     * Click app as the "Hisob raqami" (account number) field.
+     *
+     * <p>The fallback list below is preserved purely as a defensive measure: if
+     * the configuration on Click's side ever drifts (e.g. tester uses
+     * {@code merchant_trans_id} or {@code driver_code} during dry runs), the
+     * service still resolves the identifier rather than failing with -8.
+     */
+    static final String CANONICAL_IDENTIFIER_KEY = "account";
+
+    /**
      * Ordered list of param keys we try (in order) to extract the user-typed identifier
-     * for Getinfo. OPEN QUESTION: which key Click's ADVANCED SHOP cabinet uses — extracted
-     * defensively until we get a confirmed answer. To switch the canonical key, just
-     * reorder this list (no code change needed).
+     * for Getinfo. {@link #CANONICAL_IDENTIFIER_KEY} is FIRST; the rest are defensive
+     * fallbacks for during-onboarding flexibility. To change the canonical key, update
+     * {@link #CANONICAL_IDENTIFIER_KEY} AND the list (the constant exists separately
+     * so tests + deliverables can reference one source of truth).
      */
     private static final List<String> IDENTIFIER_KEY_CANDIDATES =
-            List.of("account", "contract", "merchant_trans_id", "driver_code", "code");
+            List.of(CANONICAL_IDENTIFIER_KEY, "contract", "merchant_trans_id", "driver_code", "code");
 
     /** Where the amount field lives in params (Prepare/Complete). Same defensive list. */
     private static final List<String> AMOUNT_KEY_CANDIDATES =

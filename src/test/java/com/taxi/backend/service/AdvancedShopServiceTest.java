@@ -382,5 +382,85 @@ class AdvancedShopServiceTest {
         assertEquals("X42", AdvancedShopService.concatParamValues(p));
     }
 
+    // ─── 6. Click integration handover requirements ───
+    //
+    // These four tests lock the behaviors the user described to Click on 2026-06-26:
+    //   - "account" is the canonical parameter name we asked Click to send
+    //   - prepare with missing amount is rejected (no ledger write, no transaction)
+    //   - complete with a non-existent driver is rejected (no balance credit) — with
+    //     the "failed" status so Click cancels rather than retries forever
+    //   - canonical identifier key constant is publicly declared (deliverable references it)
+
+    @Test
+    void canonicalIdentifierKey_isAccount() {
+        // The Click integration deliverable says we tell Click to send "account" — this test
+        // FAILS LOUDLY if the canonical key is ever changed without coordinating with Click.
+        assertEquals("account", AdvancedShopService.CANONICAL_IDENTIFIER_KEY,
+                "Telegram handover (2026-06-26) pinned 'account' as the identifier key — coordinate any change with Click");
+    }
+
+    @Test
+    void getinfo_accountKeyWins_overOtherCandidates() {
+        // If Click ever sends BOTH "account" and a legacy key (e.g. "merchant_trans_id"),
+        // "account" must win — that's the contract.
+        Driver d = activeDriverWithCode(5L, "TZ-0005", "Aliyev Akmal");
+        when(driverRepo.findByDriverCode("TZ-0005")).thenReturn(Optional.of(d));
+
+        LinkedHashMap<String, Object> params = new LinkedHashMap<>();
+        params.put("merchant_trans_id", "TZ-9999");           // legacy / wrong driver
+        params.put("account", "TZ-0005");                     // canonical — wins
+        Map<String, Object> b = body("P", "A", 0, "T", params);
+        sign(b);
+
+        Map<String, Object> resp = service.dispatch(b);
+        assertEquals(0, resp.get("error"));
+        assertEquals(Map.of("fio", "Aliyev Akmal"), resp.get("params"));
+        verify(driverRepo).findByDriverCode("TZ-0005");
+        verify(driverRepo, never()).findByDriverCode("TZ-9999");
+    }
+
+    @Test
+    void prepare_missingAmount_returnsMinusEight_andNoLedgerWrite() {
+        Driver d = activeDriverWithCode(5L, "TZ-0005", "Aliyev Akmal");
+        // We deliberately do NOT stub findByDriverCode — if amount validation runs
+        // BEFORE driver lookup, the repo is never hit. If validation runs after, we'd
+        // still get -8 because driver is fine. Either way: no ledger write.
+        lenient().when(driverRepo.findByDriverCode("TZ-0005")).thenReturn(Optional.of(d));
+
+        LinkedHashMap<String, Object> params = new LinkedHashMap<>();
+        params.put("account", "TZ-0005");
+        // No amount / summa key at all
+        Map<String, Object> b = body("PAYDOC-1", "ATT-1", 1, "T", params);
+        sign(b);
+
+        Map<String, Object> resp = service.dispatch(b);
+        assertEquals(-8, resp.get("error"), "missing amount -> -8 (malformed request)");
+        verifyNoInteractions(ledger);
+        verify(txRepo, never()).save(any());
+    }
+
+    @Test
+    void complete_unknownDriver_returnsFailedStatus_noCredit_noConfirmedLedger() {
+        // Driver code that doesn't exist -> error -5 + status=1 (Click cancels, doesn't retry).
+        when(driverRepo.findByDriverCode("TZ-9999")).thenReturn(Optional.empty());
+
+        LinkedHashMap<String, Object> params = new LinkedHashMap<>();
+        params.put("account", "TZ-9999");
+        params.put("amount", "1000");
+        Map<String, Object> b = body("PAYDOC-X", "ATT-X", 2, "T", params);
+        b.put("merchant_prepare_id", "PAYDOC-X");
+        sign(b);
+
+        Map<String, Object> resp = service.dispatch(b);
+        assertEquals(-5, resp.get("error"));
+        assertEquals(1, resp.get("status"), "status=1 (failed) so Click stops retrying");
+
+        // CRITICAL: no balance credit, no transaction logged, no CONFIRMED ledger row.
+        verify(driverRepo, never()).addToBalance(anyLong(), anyLong());
+        verify(txRepo, never()).save(any());
+        verify(ledger, never()).markConfirmedIfNotAlready(anyString(), anyString());
+        // markCancelled MAY have been called (safe — still no money moved).
+    }
+
     private static String anyString() { return any(String.class); }
 }
