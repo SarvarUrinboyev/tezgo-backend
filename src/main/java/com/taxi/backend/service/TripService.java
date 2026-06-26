@@ -70,6 +70,18 @@ public class TripService {
     @Value("${matching.decline-cooldown-seconds:60}") // rad etishdan keyin yangi buyurtma olmaslik (soniya)
     private long declineCooldownSeconds;
 
+    /**
+     * Trip COMPLETED bo'lganda haydovchi va yo'lovchiga "Sayohat yakunlandi! 🏁 / Baholashni
+     * unutmang" push xabari. Reyting tizimi olib tashlangani uchun DEFAULT=false (push yo'q,
+     * tovush yo'q). Reyting qaytarilganda qayta yoqish uchun: tezyol.env'da
+     * TRIP_COMPLETION_PUSH_ENABLED=true qiling va tezyol.service'ni qayta ishga tushiring —
+     * kod o'zgarishi shart emas. Flag faqat ikkala COMPLETED push chaqirig'iga ta'sir qiladi;
+     * DRIVER_ARRIVED push, WebSocket broadcast, Kafka TRIP_COMPLETED event, balans krediti,
+     * referral mukofoti, DB status saqlash — barchasi har doim ishlaydi.
+     */
+    @Value("${tezgo.trip-completion-push.enabled:false}")
+    private boolean tripCompletionPushEnabled;
+
     public TripService(TripRepository tripRepository,
             DriverRepository driverRepository,
             TariffRepository tariffRepository,
@@ -546,13 +558,15 @@ public class TripService {
         }
 
         // Yo'lovchiga push notification (holat o'zgarganda)
+        // NB: COMPLETED branch tripCompletionPushEnabled flag bilan o'chirilgan (reyting yo'q).
+        //     DRIVER_ARRIVED branch flag bilan bog'liq emas — har doim ishlaydi.
         Long passengerId = trip.getPassenger() != null ? trip.getPassenger().getId() : null;
         if (passengerId != null) {
             try {
                 if (newStatus == TripStatus.DRIVER_ARRIVED) {
                     pushService.notifyPassenger(passengerId, "Haydovchi yetib keldi! 📍",
                             "Haydovchi sizni kutmoqda", Map.of("tripId", tripId, "type", "ARRIVED"));
-                } else if (newStatus == TripStatus.COMPLETED) {
+                } else if (newStatus == TripStatus.COMPLETED && tripCompletionPushEnabled) {
                     boolean appTrip = "APP".equals(trip.getSource());
                     pushService.notifyPassenger(passengerId, "Sayohat yakunlandi! 🏁",
                             appTrip ? "Baholashni unutmang" : "Haydovchingiz siz bilan bo'ldi",
@@ -565,7 +579,8 @@ public class TripService {
 
         // Haydovchiga ham push — safar yakunlanganda (post-trip SMS o'rniga; SMS pul/vaqt sarflaydi).
         // Yo'lovchi push'ini yuqorida oladi; bu yerda haydovchiga ilova ichi bildirishnomasi.
-        if (newStatus == TripStatus.COMPLETED && driver != null) {
+        // tripCompletionPushEnabled flag bilan o'chirilgan — reyting tizimi qaytsa qayta yoqiladi.
+        if (newStatus == TripStatus.COMPLETED && driver != null && tripCompletionPushEnabled) {
             try {
                 pushService.notifyDriver(driver.getId(), "Sayohat yakunlandi! 🏁",
                         "Yo'lovchini baholashni unutmang",
