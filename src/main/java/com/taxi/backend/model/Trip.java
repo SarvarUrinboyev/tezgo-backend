@@ -148,6 +148,17 @@ public class Trip {
     @Column(name = "selected_services", length = 255)
     private String selectedServices;
 
+    // Layer 2c — buyurtma-signal yetkazib berish ACK zanjiri (ADDITIVE; push contract'ning qismi EMAS).
+    // dispatched_at: buyurtma haydovchilarga haqiqatan jo'natilgan vaqt (notify paytida o'rnatiladi).
+    // first_received_at: BIRINCHI xabardor qilingan haydovchining ilovasi buyurtmani EKRANDA ko'rsatgan vaqt
+    //   (IncomingOrderModal ko'ringanda app ACK yuboradi). Bu — "haydovchi ko'rdi" signali.
+    // 2b eskalatsiya FAQAT shu maydonlar bo'sh + excluded_driver_ids bo'sh + status=SEARCHING bo'lsa ishlaydi.
+    @Column(name = "dispatched_at")
+    private LocalDateTime dispatchedAt;
+
+    @Column(name = "first_received_at")
+    private LocalDateTime firstReceivedAt;
+
     public Trip() {
     }
 
@@ -438,6 +449,23 @@ public class Trip {
 
     public void setSelectedServices(String selectedServices) {
         this.selectedServices = selectedServices;
+    }
+
+    // Layer 2c — dispatch/received ACK timestamps
+    public LocalDateTime getDispatchedAt() {
+        return dispatchedAt;
+    }
+
+    public void setDispatchedAt(LocalDateTime dispatchedAt) {
+        this.dispatchedAt = dispatchedAt;
+    }
+
+    public LocalDateTime getFirstReceivedAt() {
+        return firstReceivedAt;
+    }
+
+    public void setFirstReceivedAt(LocalDateTime firstReceivedAt) {
+        this.firstReceivedAt = firstReceivedAt;
     }
 
     public java.time.LocalDateTime getScheduledAt() {

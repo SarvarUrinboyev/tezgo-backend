@@ -462,6 +462,53 @@ public class TripService {
         return Map.of("status", trip.getStatus().name(), "tripId", tripId, "declined", true);
     }
 
+    /**
+     * Layer 2c — buyurtma "QABUL QILINDI (ko'rsatildi)" ACK.
+     * Haydovchi ilovasi IncomingOrderModal'ni EKRANDA ko'rsatgan zahoti chaqiriladi
+     * ("qabul qilish" emas — shunchaki "men buni ko'rdim" signali). first_received_at NULL bo'lsa
+     * o'rnatadi (birinchi ACK g'olib). Idempotent — takroriy chaqiruv hech narsa qilmaydi.
+     *
+     * Bu signal 2b eskalatsiyasini ANIQ qiladi: agar HECH BIR haydovchi ilovasi buyurtmani ko'rsatmagan
+     * bo'lsa (push fonда o'lgan), operatorga eskalatsiya bo'ladi. Bu yerda ko'rsatilgan bo'lsa — eskalatsiya yo'q.
+     *
+     * Hech qachon xato tashlamaydi (haydovchi UI'sini bloklamaslik uchun) — noma'lum/ruxsatsiz holatda ham 200.
+     * ADDITIVE: FSI/native/push contract'ga TEGILMAGAN.
+     */
+    @Transactional
+    public Map<String, Object> markOrderReceived(User driverUser, Long tripId) {
+        try {
+            Driver driver = driverRepository.findByUserId(driverUser.getId()).orElse(null);
+            Trip trip = tripRepository.findById(tripId).orElse(null);
+            if (driver == null || trip == null) {
+                return Map.of("tripId", tripId, "acked", false);
+            }
+            // Faqat shu trip uchun XABARDOR QILINGAN haydovchi ACK yubora oladi (soxta ACK'lardan himoya).
+            if (!isDriverNotified(trip, driver.getId())) {
+                return Map.of("tripId", tripId, "acked", false);
+            }
+            // Birinchi ACK g'olib — keyingilar no-op (idempotent).
+            if (trip.getFirstReceivedAt() == null) {
+                trip.setFirstReceivedAt(LocalDateTime.now());
+                tripRepository.save(trip);
+            }
+            return Map.of("tripId", tripId, "acked", true);
+        } catch (Exception e) {
+            // Hech qachon bloklamaymiz — ACK best-effort.
+            log.warn("[ACK] markOrderReceived xato (trip={}): {}", tripId, e.getMessage());
+            return Map.of("tripId", tripId, "acked", false);
+        }
+    }
+
+    /** trip.notifiedDriverIds (CSV) ichida driverId bormi? */
+    private static boolean isDriverNotified(Trip trip, Long driverId) {
+        String csv = trip.getNotifiedDriverIds();
+        if (csv == null || csv.isBlank() || driverId == null) return false;
+        for (String part : csv.split(",")) {
+            if (part.trim().equals(String.valueOf(driverId))) return true;
+        }
+        return false;
+    }
+
     /** Status almashtirish: ARRIVED → STARTED → COMPLETED */
     @Transactional
     public Map<String, Object> updateTripStatus(User driverUser, Long tripId, TripStatus newStatus) {

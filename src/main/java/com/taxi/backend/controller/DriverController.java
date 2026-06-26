@@ -163,6 +163,16 @@ public class DriverController {
         }
     }
 
+    /**
+     * Layer 2c — "buyurtma ekranda ko'rsatildi" ACK. Ilova IncomingOrderModal ochilganda chaqiradi.
+     * Best-effort: hech qachon haydovchi UI'sini bloklamaydi (har doim 200). 2b eskalatsiyasini aniq qiladi.
+     */
+    @PostMapping({"/trips/{tripId}/received", "/orders/{tripId}/received"})
+    public ResponseEntity<?> orderReceived(@AuthenticationPrincipal User user,
+            @PathVariable Long tripId) {
+        return ResponseEntity.ok(tripService.markOrderReceived(user, tripId));
+    }
+
     @Operation(summary = "Safarni yakunlash", description = "Safarni COMPLETED ga o'tkazadi. Komissiya hisoblanadi, haydovchi balansidan yechiladi.")
     @PutMapping({"/trips/{tripId}/complete", "/orders/{tripId}/complete"})
     public ResponseEntity<?> completeTrip(@AuthenticationPrincipal User user,

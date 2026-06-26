@@ -120,6 +120,12 @@ public class TripNotificationHelper {
             trip.setNotifiedDriverIds(
                     notifiedIds.stream().map(String::valueOf).collect(Collectors.joining(","))
             );
+            // Layer 2c — dispatch vaqtini belgilash (eskalatsiya taymeri shu vaqtdan boshlanadi).
+            // Faqat birinchi dispatch'da o'rnatamiz (re-broadcast dispatched_at'ni surmasin).
+            // ADDITIVE: push payload (sendNewOrderNotification) ga TEGILMAGAN.
+            if (trip.getDispatchedAt() == null) {
+                trip.setDispatchedAt(java.time.LocalDateTime.now());
+            }
             tripRepository.save(trip);
         }
     }
