@@ -121,13 +121,24 @@ public class AdvancedShopService {
     // ─────────────────────────────────────────────
 
     /**
-     * Top-level dispatch. Reads {@code action} from the body, verifies the signature,
-     * delegates to the per-action handler.
+     * Top-level dispatch. Reads {@code action} from the body, authorizes it, delegates.
+     *
+     * <p>Authorization is per-action:
+     * <ul>
+     *   <li><b>getinfo (action=0)</b> — a READ-ONLY name lookup that moves NO money. Click's
+     *       ADVANCED SHOP sends getinfo WITHOUT a signature (only {@code action + service_id +
+     *       params.account}; confirmed by Click rep, 2026-06). So getinfo uses
+     *       {@link #getinfoAuthorized}: if a {@code sign_string} IS present we still verify it;
+     *       if absent we accept ONLY when {@code service_id} matches our configured shop id.
+     *       Still fail-closed until the secret is configured.</li>
+     *   <li><b>prepare/complete/check/compare</b> — MONEY path. ALWAYS strictly signed via
+     *       {@link #verifySignature}. Unchanged.</li>
+     * </ul>
      */
     public Map<String, Object> dispatch(Map<String, Object> body) {
         int action = asInt(body.get("action"), -1);
-        // Sign check is the first hard gate for ALL actions.
-        if (!verifySignature(body)) {
+        boolean authorized = (action == 0) ? getinfoAuthorized(body) : verifySignature(body);
+        if (!authorized) {
             return error(-1, "SIGN CHECK FAILED", body);
         }
         return switch (action) {
@@ -138,6 +149,30 @@ public class AdvancedShopService {
             case 4 -> handleCompare(body);
             default -> error(-3, "Action not found", body);
         };
+    }
+
+    /**
+     * Authorization for getinfo (action=0) only — read-only, money-less lookup.
+     * <ul>
+     *   <li>Secret not yet configured → reject (fail-closed; same as everything else).</li>
+     *   <li>{@code sign_string} present → verify it exactly like the money path (a signed
+     *       getinfo still works, in case Click signs it).</li>
+     *   <li>{@code sign_string} absent (Click's normal getinfo shape) → accept ONLY when the
+     *       request's {@code service_id} matches our configured {@code shopServiceId}. This is a
+     *       basic caller check for an unsigned, read-only endpoint that returns only a name.</li>
+     * </ul>
+     */
+    boolean getinfoAuthorized(Map<String, Object> body) {
+        if (shopSecretKey == null || shopSecretKey.isBlank()) {
+            return false; // fail-closed until Click registers the service + we set the secret
+        }
+        String sign = asString(body.get("sign_string"));
+        if (sign != null && !sign.isBlank()) {
+            return verifySignature(body); // signed getinfo → verify like the money path
+        }
+        // Unsigned getinfo → require the configured service_id to match.
+        return shopServiceId != null && !shopServiceId.isBlank()
+                && shopServiceId.equals(asString(body.get("service_id")));
     }
 
     // ─────────────────────────────────────────────

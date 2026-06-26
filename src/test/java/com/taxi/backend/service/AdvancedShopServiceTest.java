@@ -239,6 +239,96 @@ class AdvancedShopServiceTest {
         assertEquals(-8, service.dispatch(b).get("error"));
     }
 
+    // ─── 2b. Getinfo authorization — UNSIGNED getinfo (Click's real shape) ───
+    // Click sends getinfo without sign_string: { action:0, service_id, params:{account} }.
+    // getinfo (read-only) accepts unsigned IFF service_id matches; money path stays strict.
+
+    @Test
+    void getinfo_unsigned_matchingServiceId_returnsFio() {
+        Driver d = activeDriverWithCode(5L, "TZ-0005", "Aliyev Akmal");
+        when(driverRepo.findByDriverCode("TZ-0005")).thenReturn(Optional.of(d));
+
+        LinkedHashMap<String, Object> params = new LinkedHashMap<>();
+        params.put("account", "TZ-0005");
+        // Click's real getinfo shape: no sign_string. body() already sets service_id=SERVICE_ID.
+        Map<String, Object> b = body("P", "A", 0, "T", params);
+        // NOTE: deliberately NOT calling sign(b) — this is an UNSIGNED getinfo.
+
+        Map<String, Object> resp = service.dispatch(b);
+        assertEquals(0, resp.get("error"), "unsigned getinfo with matching service_id must be accepted");
+        assertEquals(Map.of("fio", "Aliyev Akmal"), resp.get("params"));
+    }
+
+    @Test
+    void getinfo_unsigned_wrongServiceId_returnsMinusOne() {
+        LinkedHashMap<String, Object> params = new LinkedHashMap<>();
+        params.put("account", "TZ-0005");
+        Map<String, Object> b = body("P", "A", 0, "T", params);
+        b.put("service_id", "99999");        // does NOT match configured SERVICE_ID
+        // unsigned
+
+        Map<String, Object> resp = service.dispatch(b);
+        assertEquals(-1, resp.get("error"), "unsigned getinfo with wrong service_id must be rejected");
+        verify(driverRepo, never()).findByDriverCode(any());
+    }
+
+    @Test
+    void getinfo_unsigned_missingServiceId_returnsMinusOne() {
+        LinkedHashMap<String, Object> params = new LinkedHashMap<>();
+        params.put("account", "TZ-0005");
+        Map<String, Object> b = body("P", "A", 0, "T", params);
+        b.remove("service_id");               // no service_id at all
+        // unsigned
+
+        Map<String, Object> resp = service.dispatch(b);
+        assertEquals(-1, resp.get("error"), "unsigned getinfo with no service_id must be rejected");
+        verify(driverRepo, never()).findByDriverCode(any());
+    }
+
+    @Test
+    void getinfo_unsigned_secretUnset_returnsMinusOne_failClosed() {
+        ReflectionTestUtils.setField(service, "shopSecretKey", "");   // not configured yet
+        LinkedHashMap<String, Object> params = new LinkedHashMap<>();
+        params.put("account", "TZ-0005");
+        Map<String, Object> b = body("P", "A", 0, "T", params);       // matching service_id, unsigned
+
+        Map<String, Object> resp = service.dispatch(b);
+        assertEquals(-1, resp.get("error"),
+                "fail-closed: even matching service_id is rejected until the secret is configured");
+        verify(driverRepo, never()).findByDriverCode(any());
+    }
+
+    @Test
+    void getinfo_signed_stillVerifies_whenSignPresent() {
+        // If Click DOES sign getinfo, the signed path must still work (verify the signature).
+        Driver d = activeDriverWithCode(5L, "TZ-0005", "Aliyev Akmal");
+        when(driverRepo.findByDriverCode("TZ-0005")).thenReturn(Optional.of(d));
+
+        LinkedHashMap<String, Object> params = new LinkedHashMap<>();
+        params.put("account", "TZ-0005");
+        Map<String, Object> b = body("P", "A", 0, "T", params);
+        sign(b);                              // signed getinfo
+        assertEquals(0, service.dispatch(b).get("error"), "signed getinfo must still verify + succeed");
+
+        // tampered signature on getinfo → rejected (signed path still enforced)
+        b.put("sign_string", "deadbeef00000000000000000000beef");
+        assertEquals(-1, service.dispatch(b).get("error"), "signed getinfo with bad signature must be rejected");
+    }
+
+    @Test
+    void prepare_unsigned_stillRejected_moneyPathStaysStrict() {
+        // The getinfo relaxation must NOT leak into the money path.
+        LinkedHashMap<String, Object> params = new LinkedHashMap<>();
+        params.put("account", "TZ-0005");
+        params.put("amount", "1000");
+        Map<String, Object> b = body("PAYDOC-1", "ATT-1", 1, "T", params);   // action=1 prepare
+        // unsigned, but matching service_id — must STILL be rejected (money path requires signature)
+
+        Map<String, Object> resp = service.dispatch(b);
+        assertEquals(-1, resp.get("error"), "unsigned prepare must be rejected even with matching service_id");
+        verifyNoInteractions(ledger);
+    }
+
     // ─── 3. Prepare ───
 
     @Test
