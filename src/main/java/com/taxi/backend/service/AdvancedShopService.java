@@ -191,7 +191,10 @@ public class AdvancedShopService {
         if (typedId == null || typedId.isBlank()) {
             return error(-8, "Error in request from Click", body);
         }
-        Optional<Driver> opt = driverRepository.findByDriverCode(typedId.trim());
+        // EAGER-fetch the User (JOIN FETCH) — getinfo runs without a transaction (dispatch self-invokes
+        // this package-private handler, so @Transactional would be a proxy no-op). With the user fetched
+        // in the same query, driver.getUser().getName() needs no open session — no LazyInitializationException.
+        Optional<Driver> opt = driverRepository.findByDriverCodeWithUser(typedId.trim());
         if (opt.isEmpty()) {
             return error(-5, "User does not exist by params", body);
         }

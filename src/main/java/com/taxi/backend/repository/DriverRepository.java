@@ -67,6 +67,12 @@ public interface DriverRepository extends JpaRepository<Driver, Long> {
 
     Optional<Driver> findByDriverCode(String driverCode);
 
+    // Click ADVANCED SHOP getinfo — eager-fetch the User so getName() works OUTSIDE a transaction.
+    // (getinfo runs via dispatch()'s self-invocation, so @Transactional on the handler is a no-op
+    //  in proxy mode — JOIN FETCH is the robust fix; no lazy proxy to initialize.)
+    @Query("SELECT d FROM Driver d JOIN FETCH d.user WHERE d.driverCode = :driverCode")
+    Optional<Driver> findByDriverCodeWithUser(@Param("driverCode") String driverCode);
+
     // DB fallback for matching when Redis + in-memory both empty (e.g. after server restart)
     @Query("SELECT d FROM Driver d WHERE d.isOnline = true AND d.status = com.taxi.backend.enums.DriverStatus.ACTIVE " +
             "AND d.latitude IS NOT NULL AND d.longitude IS NOT NULL AND d.updatedAt >= :since")

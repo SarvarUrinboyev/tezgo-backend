@@ -163,7 +163,7 @@ class AdvancedShopServiceTest {
     @Test
     void getinfo_activeDriver_returnsFio() {
         Driver d = activeDriverWithCode(5L, "TZ-0005", "Aliyev Akmal");
-        when(driverRepo.findByDriverCode("TZ-0005")).thenReturn(Optional.of(d));
+        when(driverRepo.findByDriverCodeWithUser("TZ-0005")).thenReturn(Optional.of(d));
 
         LinkedHashMap<String, Object> params = new LinkedHashMap<>();
         params.put("account", "TZ-0005");
@@ -178,7 +178,7 @@ class AdvancedShopServiceTest {
 
     @Test
     void getinfo_unknownCode_returnsMinusFive() {
-        when(driverRepo.findByDriverCode("TZ-9999")).thenReturn(Optional.empty());
+        when(driverRepo.findByDriverCodeWithUser("TZ-9999")).thenReturn(Optional.empty());
         LinkedHashMap<String, Object> params = new LinkedHashMap<>();
         params.put("account", "TZ-9999");
         Map<String, Object> b = body("P", "A", 0, "T", params);
@@ -192,7 +192,7 @@ class AdvancedShopServiceTest {
     void getinfo_blockedDriver_returnsMinusFive() {
         Driver d = activeDriverWithCode(5L, "TZ-0005", "Blocked Person");
         d.setStatus(DriverStatus.BLOCKED);
-        when(driverRepo.findByDriverCode("TZ-0005")).thenReturn(Optional.of(d));
+        when(driverRepo.findByDriverCodeWithUser("TZ-0005")).thenReturn(Optional.of(d));
 
         LinkedHashMap<String, Object> params = new LinkedHashMap<>();
         params.put("account", "TZ-0005");
@@ -206,7 +206,7 @@ class AdvancedShopServiceTest {
     void getinfo_suspendedDriver_returnsMinusFive() {
         Driver d = activeDriverWithCode(5L, "TZ-0005", "X");
         d.setStatus(DriverStatus.SUSPENDED);
-        when(driverRepo.findByDriverCode("TZ-0005")).thenReturn(Optional.of(d));
+        when(driverRepo.findByDriverCodeWithUser("TZ-0005")).thenReturn(Optional.of(d));
 
         LinkedHashMap<String, Object> params = new LinkedHashMap<>();
         params.put("account", "TZ-0005");
@@ -226,7 +226,7 @@ class AdvancedShopServiceTest {
         Map<String, Object> resp = service.dispatch(b);
         assertEquals(-1, resp.get("error"));
         assertEquals("SIGN CHECK FAILED", resp.get("error_note"));
-        verify(driverRepo, never()).findByDriverCode(any());
+        verify(driverRepo, never()).findByDriverCodeWithUser(any());
     }
 
     @Test
@@ -246,7 +246,7 @@ class AdvancedShopServiceTest {
     @Test
     void getinfo_unsigned_matchingServiceId_returnsFio() {
         Driver d = activeDriverWithCode(5L, "TZ-0005", "Aliyev Akmal");
-        when(driverRepo.findByDriverCode("TZ-0005")).thenReturn(Optional.of(d));
+        when(driverRepo.findByDriverCodeWithUser("TZ-0005")).thenReturn(Optional.of(d));
 
         LinkedHashMap<String, Object> params = new LinkedHashMap<>();
         params.put("account", "TZ-0005");
@@ -269,7 +269,7 @@ class AdvancedShopServiceTest {
 
         Map<String, Object> resp = service.dispatch(b);
         assertEquals(-1, resp.get("error"), "unsigned getinfo with wrong service_id must be rejected");
-        verify(driverRepo, never()).findByDriverCode(any());
+        verify(driverRepo, never()).findByDriverCodeWithUser(any());
     }
 
     @Test
@@ -282,7 +282,7 @@ class AdvancedShopServiceTest {
 
         Map<String, Object> resp = service.dispatch(b);
         assertEquals(-1, resp.get("error"), "unsigned getinfo with no service_id must be rejected");
-        verify(driverRepo, never()).findByDriverCode(any());
+        verify(driverRepo, never()).findByDriverCodeWithUser(any());
     }
 
     @Test
@@ -295,14 +295,14 @@ class AdvancedShopServiceTest {
         Map<String, Object> resp = service.dispatch(b);
         assertEquals(-1, resp.get("error"),
                 "fail-closed: even matching service_id is rejected until the secret is configured");
-        verify(driverRepo, never()).findByDriverCode(any());
+        verify(driverRepo, never()).findByDriverCodeWithUser(any());
     }
 
     @Test
     void getinfo_signed_stillVerifies_whenSignPresent() {
         // If Click DOES sign getinfo, the signed path must still work (verify the signature).
         Driver d = activeDriverWithCode(5L, "TZ-0005", "Aliyev Akmal");
-        when(driverRepo.findByDriverCode("TZ-0005")).thenReturn(Optional.of(d));
+        when(driverRepo.findByDriverCodeWithUser("TZ-0005")).thenReturn(Optional.of(d));
 
         LinkedHashMap<String, Object> params = new LinkedHashMap<>();
         params.put("account", "TZ-0005");
@@ -313,6 +313,51 @@ class AdvancedShopServiceTest {
         // tampered signature on getinfo → rejected (signed path still enforced)
         b.put("sign_string", "deadbeef00000000000000000000beef");
         assertEquals(-1, service.dispatch(b).get("error"), "signed getinfo with bad signature must be rejected");
+    }
+
+    /**
+     * REGRESSION (prod incident 2026-06-26): getinfo 500'd in prod with
+     * "Could not initialize proxy [User] - no session" — a LazyInitializationException.
+     * getinfo runs WITHOUT a transaction (dispatch self-invokes this package-private handler,
+     * so @Transactional would be a proxy no-op). The fix: handleGetinfo must use the EAGER
+     * findByDriverCodeWithUser (JOIN FETCH), never the lazy findByDriverCode.
+     *
+     * The original unit tests missed this because they mock a driver with a REAL User (getName works).
+     * Here we reproduce the EXACT symptom: the lazy lookup returns a driver whose User proxy throws
+     * "no session" on getName(); the eager lookup returns a usable driver. The test passes ONLY if
+     * getinfo took the eager path. If anyone reverts to the lazy findByDriverCode, getName() throws
+     * and this goes red — exactly the prod failure, caught in the suite.
+     *
+     * NOTE: a pure-Mockito test can't open a real Hibernate session, so this guards the *code path*
+     * (eager fetch) via the real failure symptom. A full DB-level reproduction would need a
+     * persistence context (testcontainers/Docker).
+     */
+    @Test
+    void getinfo_usesEagerFetch_soLazyUserProxyNeverInitializedOutsideSession() {
+        // Lazy path (the bug): driver whose User proxy explodes with the real Hibernate symptom.
+        Driver lazyDriver = new Driver();
+        lazyDriver.setId(5L);
+        lazyDriver.setStatus(DriverStatus.ACTIVE);
+        User lazyUserProxy = mock(User.class);
+        when(lazyUserProxy.getName())
+                .thenThrow(new org.hibernate.LazyInitializationException(
+                        "could not initialize proxy [com.taxi.backend.model.User#8] - no session"));
+        lazyDriver.setUser(lazyUserProxy);
+        lenient().when(driverRepo.findByDriverCode("TZ-0005")).thenReturn(Optional.of(lazyDriver));
+
+        // Eager path (the fix): driver with a fully-initialized User.
+        Driver eagerDriver = activeDriverWithCode(5L, "TZ-0005", "Aliyev Akmal");
+        when(driverRepo.findByDriverCodeWithUser("TZ-0005")).thenReturn(Optional.of(eagerDriver));
+
+        LinkedHashMap<String, Object> params = new LinkedHashMap<>();
+        params.put("account", "TZ-0005");
+        Map<String, Object> b = body("P", "A", 0, "T", params);
+        sign(b);
+
+        Map<String, Object> resp = service.dispatch(b);   // must NOT throw LazyInitializationException
+        assertEquals(0, resp.get("error"), "getinfo must use the eager fetch (no lazy User proxy)");
+        assertEquals(Map.of("fio", "Aliyev Akmal"), resp.get("params"));
+        verify(driverRepo).findByDriverCodeWithUser("TZ-0005");
     }
 
     @Test
@@ -494,7 +539,7 @@ class AdvancedShopServiceTest {
         // If Click ever sends BOTH "account" and a legacy key (e.g. "merchant_trans_id"),
         // "account" must win — that's the contract.
         Driver d = activeDriverWithCode(5L, "TZ-0005", "Aliyev Akmal");
-        when(driverRepo.findByDriverCode("TZ-0005")).thenReturn(Optional.of(d));
+        when(driverRepo.findByDriverCodeWithUser("TZ-0005")).thenReturn(Optional.of(d));
 
         LinkedHashMap<String, Object> params = new LinkedHashMap<>();
         params.put("merchant_trans_id", "TZ-9999");           // legacy / wrong driver
@@ -505,8 +550,8 @@ class AdvancedShopServiceTest {
         Map<String, Object> resp = service.dispatch(b);
         assertEquals(0, resp.get("error"));
         assertEquals(Map.of("fio", "Aliyev Akmal"), resp.get("params"));
-        verify(driverRepo).findByDriverCode("TZ-0005");
-        verify(driverRepo, never()).findByDriverCode("TZ-9999");
+        verify(driverRepo).findByDriverCodeWithUser("TZ-0005");
+        verify(driverRepo, never()).findByDriverCodeWithUser("TZ-9999");
     }
 
     @Test
