@@ -56,6 +56,11 @@ class CommitSafeStatusTest {
                 asyncNotifier, notificationHelper, securityMonitor, smsInviteService,
                 new com.taxi.backend.pricing.NightFareService(0, 0, 0, java.time.Clock.systemUTC()), org.mockito.Mockito.mock(com.taxi.backend.service.ReferralService.class));
         ReflectionTestUtils.setField(tripService, "commissionPercent", 10.0);
+        // This suite verifies completion COMMITS even when the completion PUSH throws / WS fails,
+        // and the commission math. Those assertions are only meaningful when the completion push
+        // actually fires, so enable the flag here. The default-off gating itself is covered by
+        // TripCompletionPushFlagTest. (Added when tezgo.trip-completion-push.enabled defaulted false.)
+        ReflectionTestUtils.setField(tripService, "tripCompletionPushEnabled", true);
 
         driverUser = new User();
         driverUser.setId(100L);
