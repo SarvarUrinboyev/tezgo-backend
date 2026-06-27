@@ -1,9 +1,11 @@
 package com.taxi.backend.controller;
 
+import com.taxi.backend.dto.OperatorReassignRequest;
 import com.taxi.backend.dto.OperatorTripRequest;
 import com.taxi.backend.model.User;
 import com.taxi.backend.service.AdminService;
 import com.taxi.backend.service.ApiRateLimitService;
+import com.taxi.backend.service.OperatorReassignService;
 import com.taxi.backend.service.OperatorService;
 import com.taxi.backend.service.PassengerHistoryService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -26,15 +28,18 @@ public class OperatorController {
     private final ApiRateLimitService rateLimitService;
     private final PassengerHistoryService passengerHistoryService;
     private final AdminService adminService;
+    private final OperatorReassignService operatorReassignService;
 
     public OperatorController(OperatorService operatorService,
                                ApiRateLimitService rateLimitService,
                                PassengerHistoryService passengerHistoryService,
-                               AdminService adminService) {
+                               AdminService adminService,
+                               OperatorReassignService operatorReassignService) {
         this.operatorService = operatorService;
         this.rateLimitService = rateLimitService;
         this.passengerHistoryService = passengerHistoryService;
         this.adminService = adminService;
+        this.operatorReassignService = operatorReassignService;
     }
 
     @Operation(summary = "Buyurtma yaratish (qo'ng'iroq)", description = "Mijoz telefon qilganda operator buyurtma yaratadi. source=CALL bilan yaratiladi. Rate limit: 20/daqiqa.")
@@ -92,6 +97,18 @@ public class OperatorController {
                                        @Valid @RequestBody OperatorTripRequest req) {
         try {
             return ResponseEntity.ok(operatorService.editTrip(operator, tripId, req));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @Operation(summary = "Boshqa haydovchiga berish", description = "Buyurtmani driverCode bo'yicha boshqa haydovchiga beradi. ACCEPTED bo'lsa: A bo'shatiladi+istisno, B'ga MAVJUD data-only ORDER_PUSH yuboriladi. Frozen core tegilmaydi.")
+    @PostMapping("/trip/{tripId}/reassign")
+    public ResponseEntity<?> reassign(@AuthenticationPrincipal User operator,
+                                       @PathVariable Long tripId,
+                                       @RequestBody OperatorReassignRequest req) {
+        try {
+            return ResponseEntity.ok(operatorReassignService.reassignByCode(operator, tripId, req.getDriverCode()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }

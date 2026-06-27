@@ -240,27 +240,45 @@ public class OperatorService {
         }
 
         Long freedDriverId = trip.getDriver() != null ? trip.getDriver().getId() : null;
+        TripStatus prevStatus = trip.getStatus();
+        // WAIVE: jamlangan kutish haqi hisoblanmaydi (charge=0) — faqat log/audit qilinadi
+        // (qo'lda ko'rib chiqish uchun). Trip COMPLETED bo'lmagani uchun komissiya ham yo'q.
+        long accruedWaiting = (trip.getWaitingPrice() != null ? trip.getWaitingPrice() : 0L)
+                + (trip.getTripWaitingPrice() != null ? trip.getTripWaitingPrice() : 0L);
+
         trip.setStatus(TripStatus.CANCELLED_BY_ADMIN);
         trip.setCancelReason("Operator bekor qildi");
-        // Haydovchini bo'shatish — ACCEPTED/DRIVER_ARRIVED bo'lsa busy-set'dan chiqadi (orphan trip leak'ini oldini oladi).
+        // Haydovchini bo'shatish — clearDriverAssignment cooldown/cancelCount'ga TEGMAYDI,
+        // ya'ni haydovchi JAZOLANMAYDI (operator bekor qildi, uning aybi emas).
         TripAssignmentUtil.clearDriverAssignment(trip);
         tripRepository.save(trip);
 
-        log.info("[OPERATOR] Buyurtma #{} bekor qilindi (operator={}, freedDriver={})",
-                tripId, operator.getPhone(), freedDriverId);
+        log.info("[OPERATOR] Buyurtma #{} bekor qilindi (operator={}, freedDriver={}, waivedWaitingTiyin={})",
+                tripId, operator.getPhone(), freedDriverId, accruedWaiting);
+        AUDIT.info("[AUDIT][OPERATOR] action=CANCEL operator={} operatorId={} tripId={} prevStatus={} freedDriverId={} waivedWaitingTiyin={} charged=0 penalty=none",
+                operator.getPhone(), operator.getId(), tripId, prevStatus.name(), freedDriverId, accruedWaiting);
 
-        return Map.of("tripId", tripId, "status", "CANCELLED_BY_ADMIN", "message", "Buyurtma bekor qilindi");
+        Map<String, Object> result = new HashMap<>();
+        result.put("tripId", tripId);
+        result.put("status", "CANCELLED_BY_ADMIN");
+        result.put("freedDriverId", freedDriverId);
+        result.put("waivedWaiting", accruedWaiting / 100); // so'm — kechirildi (charged=0)
+        result.put("message", "Buyurtma bekor qilindi (kutish haqi kechirildi)");
+        return result;
     }
 
     /**
-     * Operator post-acceptance edit — manzil B / tarif / qo'shimcha xizmatlar.
-     * Locked qaror (Sarvar): SEARCHING + ACCEPTED da to'liq tahrir (B/tarif/xizmat),
-     * narx qayta hisoblanadi; DRIVER_ARRIVED da FAQAT tarif/xizmat (manzil bloklangan)
-     * + kutish-haqi ogohlantirishi; STARTED da har qanday tahrir BLOKLANGAN.
+     * Operator post-acceptance edit — manzil A/B / tarif / qo'shimcha xizmatlar.
+     * Qoidalar:
+     *   - Olish manzili (A): faqat SEARCHING/ACCEPTED (haydovchi kelguncha).
+     *   - Borish manzili (B): SEARCHING/ACCEPTED va SAFAR DAVOMIDA (STARTED) ham — yo'lovchi
+     *     borar joyini o'zgartirishi mumkin. DRIVER_ARRIVED'da B bloklangan (kutish haqi);
+     *     Taxometr rejimida B umuman yo'q (haydovchi hisoblaydi).
+     *   - Tarif/xizmat: har qanday non-terminal holatda. REJIM (mode) o'zgartirilmaydi.
      * Narx MAVJUD SurgePricingService.calculate orqali qayta hisoblanadi (formula
-     * o'zgartirilmaydi). Biriktirilgan haydovchi o'zgarishni o'zining aktiv-trip
-     * pollingi orqali ko'radi — push YUBORILMAYDI (alohida "update" push turi yo'q;
-     * ORDER_PUSH yuborish FSI order-alert'ni noto'g'ri qayta yoqishi mumkin).
+     * o'zgartirilmaydi). Biriktirilgan haydovchi o'zgarishni aktiv-trip pollingi orqali
+     * ko'radi — push YUBORILMAYDI (alohida "update" push turi yo'q; ORDER_PUSH FSI
+     * order-alert'ni noto'g'ri qayta yoqishi mumkin).
      */
     @Transactional
     public Map<String, Object> editTrip(User operator, Long tripId, OperatorTripRequest req) {
@@ -274,11 +292,11 @@ public class OperatorService {
         if (TripStatus.TERMINAL_STATUSES.contains(st)) {
             throw new RuntimeException("Buyurtma yakunlangan/bekor qilingan — tahrirlab bo'lmaydi");
         }
-        if (st == TripStatus.STARTED) {
-            throw new RuntimeException("Safar boshlandi — tahrirlab bo'lmaydi (kerak bo'lsa bekor qiling)");
-        }
-        boolean addressEditable = (st == TripStatus.SEARCHING || st == TripStatus.ACCEPTED);
         boolean taxometer = "CALL_TAXOMETER".equals(trip.getSource());
+        // FIX1: A (pickup) faqat haydovchi kelguncha; B (destination) safar davomida ham.
+        boolean pickupEditable = (st == TripStatus.SEARCHING || st == TripStatus.ACCEPTED);
+        boolean destEditable = !taxometer
+                && (st == TripStatus.SEARCHING || st == TripStatus.ACCEPTED || st == TripStatus.STARTED);
 
         // eski qiymatlar (audit uchun)
         String oldTo = trip.getToAddress();
@@ -305,29 +323,43 @@ public class OperatorService {
             changed.append("services [").append(oldServices).append("]->[").append(trip.getSelectedServices()).append("]; ");
         }
 
-        // --- manzil A/B — faqat SEARCHING/ACCEPTED, taxometer'da yo'q.
-        //     "O'zgartirish" deb faqat HAQIQATAN farq qilsa hisoblanadi: panel har doim
-        //     joriy manzilni yuboradi, shuning uchun no-op yuborish DRIVER_ARRIVED'da
-        //     (tarif/xizmat tahriri) xato bermasligi kerak. ---
-        boolean addrChanged =
+        // --- manzil A (pickup) / B (destination) — alohida qoidalar (FIX1).
+        //     "O'zgartirish" deb faqat HAQIQATAN farq qilganda hisoblanadi: panel joriy
+        //     manzilni ham yuboradi, shuning uchun no-op yuborish xato bermasligi kerak. ---
+        boolean pickupChanged =
                 (req.getPickupAddress() != null && !req.getPickupAddress().equals(trip.getFromAddress()))
-                || (req.getDestinationAddress() != null && !req.getDestinationAddress().equals(trip.getToAddress()))
                 || (req.getFromLat() != null && !req.getFromLat().equals(trip.getFromLat()))
-                || (req.getToLat() != null && !req.getToLat().equals(trip.getToLat()));
-        if (addrChanged) {
-            if (!addressEditable) {
+                || (req.getFromLon() != null && !req.getFromLon().equals(trip.getFromLon()));
+        boolean destChanged =
+                (req.getDestinationAddress() != null && !req.getDestinationAddress().equals(trip.getToAddress()))
+                || (req.getToLat() != null && !req.getToLat().equals(trip.getToLat()))
+                || (req.getToLon() != null && !req.getToLon().equals(trip.getToLon()));
+
+        if (pickupChanged && !pickupEditable) {
+            throw new RuntimeException("Olish manzili (A) — haydovchi yo'lda yoki safar boshlangan, o'zgartirib bo'lmaydi");
+        }
+        if (destChanged) {
+            if (taxometer) {
+                throw new RuntimeException("Taxometr rejimida belgilangan manzil (B) yo'q — haydovchi hisoblaydi");
+            }
+            if (st == TripStatus.DRIVER_ARRIVED) {
                 throw new RuntimeException("Haydovchi yetib keldi — manzilni o'zgartirib bo'lmaydi (faqat tarif/xizmat)");
             }
-            if (taxometer) {
-                throw new RuntimeException("Taxometr rejimida manzil o'zgartirilmaydi");
+            if (!destEditable) {
+                throw new RuntimeException("Bu holatda borish manzilini o'zgartirib bo'lmaydi");
             }
+        }
+        if (pickupChanged) {
             if (req.getPickupAddress() != null) trip.setFromAddress(req.getPickupAddress());
-            if (req.getDestinationAddress() != null) trip.setToAddress(req.getDestinationAddress());
             if (req.getFromLat() != null) trip.setFromLat(req.getFromLat());
             if (req.getFromLon() != null) trip.setFromLon(req.getFromLon());
+            changed.append("pickupA->'").append(trip.getFromAddress()).append("'; ");
+        }
+        if (destChanged) {
+            if (req.getDestinationAddress() != null) trip.setToAddress(req.getDestinationAddress());
             if (req.getToLat() != null) trip.setToLat(req.getToLat());
             if (req.getToLon() != null) trip.setToLon(req.getToLon());
-            changed.append("dest '").append(oldTo).append("'->'").append(trip.getToAddress()).append("'; ");
+            changed.append("destB '").append(oldTo).append("'->'").append(trip.getToAddress()).append("'; ");
         }
 
         // --- narxni qayta hisoblash: MAVJUD formula (SurgePricingService.calculate).
@@ -366,6 +398,8 @@ public class OperatorService {
         result.put("estimatedPrice", trip.getTotalPrice() != null ? trip.getTotalPrice() / 100 : 0);
         if (st == TripStatus.DRIVER_ARRIVED) {
             result.put("warning", "Haydovchi yetib keldi — kutish haqi hisoblanayotgan bo'lishi mumkin (60s bepul). Tahrir kutish haqiga ta'sir qilmaydi.");
+        } else if (st == TripStatus.STARTED) {
+            result.put("warning", "Safar davomida tahrir — borish manzili (B) o'zgartirildi va narx qayta hisoblandi. Olish manzili (A) va rejim o'zgartirilmaydi.");
         }
         result.put("message", "Buyurtma tahrirlandi");
         return result;

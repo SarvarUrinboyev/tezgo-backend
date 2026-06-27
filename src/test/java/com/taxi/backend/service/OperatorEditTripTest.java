@@ -93,13 +93,33 @@ class OperatorEditTripTest {
     }
 
     @Test
-    @DisplayName("STARTED safarni tahrirlab bo'lmaydi")
-    void editStarted_blocked() {
+    @DisplayName("FIX1: STARTED — borish manzili (B) tahriri RUXSAT, narx qayta hisoblanadi")
+    void editStarted_destAllowed() {
         Trip trip = callTrip(101L, TripStatus.STARTED);
         when(tripRepository.findById(101L)).thenReturn(Optional.of(trip));
+        when(surgePricingService.calculate(anyLong(), anyDouble(), anyDouble()))
+                .thenReturn(new SurgeResult(1.0, 70000L, "NORMAL", List.of()));
         OperatorTripRequest req = new OperatorTripRequest();
-        req.setDestinationAddress("X");
-        assertThrows(RuntimeException.class, () -> operatorService.editTrip(operator, 101L, req));
+        req.setDestinationAddress("Yangi B (safar davomida)");
+        req.setToLat(41.34); req.setToLon(69.72);
+
+        Map<String, Object> res = operatorService.editTrip(operator, 101L, req);
+
+        assertEquals("Yangi B (safar davomida)", trip.getToAddress(), "B safar davomida o'zgaradi");
+        assertEquals(70000L, trip.getBasePrice(), "narx qayta hisoblanadi");
+        assertEquals(TripStatus.STARTED, trip.getStatus());
+        verify(tripRepository).save(trip);
+    }
+
+    @Test
+    @DisplayName("FIX1: STARTED — olish manzili (A) tahriri BLOKLANGAN")
+    void editStarted_pickupBlocked() {
+        Trip trip = callTrip(104L, TripStatus.STARTED);
+        when(tripRepository.findById(104L)).thenReturn(Optional.of(trip));
+        OperatorTripRequest req = new OperatorTripRequest();
+        req.setPickupAddress("Yangi A");
+        req.setFromLat(41.20); req.setFromLon(69.60);
+        assertThrows(RuntimeException.class, () -> operatorService.editTrip(operator, 104L, req));
         verify(tripRepository, never()).save(any());
     }
 

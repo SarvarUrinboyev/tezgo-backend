@@ -75,4 +75,25 @@ class OperatorCancelFreesDriverTest {
 
         assertThrows(RuntimeException.class, () -> operatorService.cancelTrip(operator, 1L));
     }
+
+    @Test
+    @DisplayName("P4: Cancel — jamlangan kutish haqi KECHIRILADI (charged=0), haydovchi bo'shatiladi")
+    void cancel_waivesAccruedWaiting() {
+        Driver d = new Driver();
+        d.setId(8L);
+        Trip trip = new Trip();
+        trip.setId(400L);
+        trip.setSource("CALL");
+        trip.setStatus(TripStatus.DRIVER_ARRIVED);
+        trip.setDriver(d);
+        trip.setAcceptedAt(LocalDateTime.now());
+        trip.setWaitingPrice(90000L);     // 900 so'm jamlangan kutish
+        when(tripRepository.findById(400L)).thenReturn(Optional.of(trip));
+
+        Map<String, Object> res = operatorService.cancelTrip(operator, 400L);
+
+        assertEquals(TripStatus.CANCELLED_BY_ADMIN, trip.getStatus());
+        assertNull(trip.getDriver(), "haydovchi bo'shatildi (jazo yo'q)");
+        assertEquals(900L, res.get("waivedWaiting"), "kutish haqi so'mda kechirildi (charged=0)");
+    }
 }
