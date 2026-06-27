@@ -2,6 +2,7 @@ package com.taxi.backend.controller;
 
 import com.taxi.backend.dto.OperatorTripRequest;
 import com.taxi.backend.model.User;
+import com.taxi.backend.service.AdminService;
 import com.taxi.backend.service.ApiRateLimitService;
 import com.taxi.backend.service.OperatorService;
 import com.taxi.backend.service.PassengerHistoryService;
@@ -24,13 +25,16 @@ public class OperatorController {
     private final OperatorService operatorService;
     private final ApiRateLimitService rateLimitService;
     private final PassengerHistoryService passengerHistoryService;
+    private final AdminService adminService;
 
     public OperatorController(OperatorService operatorService,
                                ApiRateLimitService rateLimitService,
-                               PassengerHistoryService passengerHistoryService) {
+                               PassengerHistoryService passengerHistoryService,
+                               AdminService adminService) {
         this.operatorService = operatorService;
         this.rateLimitService = rateLimitService;
         this.passengerHistoryService = passengerHistoryService;
+        this.adminService = adminService;
     }
 
     @Operation(summary = "Buyurtma yaratish (qo'ng'iroq)", description = "Mijoz telefon qilganda operator buyurtma yaratadi. source=CALL bilan yaratiladi. Rate limit: 20/daqiqa.")
@@ -56,6 +60,12 @@ public class OperatorController {
     @GetMapping("/trips/active")
     public ResponseEntity<?> activeTrips(@AuthenticationPrincipal User operator) {
         return ResponseEntity.ok(operatorService.getAllCallTrips());
+    }
+
+    @Operation(summary = "Onlayn haydovchilar (xarita)", description = "Operator xaritasi uchun onlayn haydovchilar joylashuvi. Mavjud getOnlineDriversForMap() ni qayta ishlatadi — haydovchi ilovasi va location cache'ga TEGMAYDI (faqat o'qish).")
+    @GetMapping("/drivers/online")
+    public ResponseEntity<?> onlineDrivers(@AuthenticationPrincipal User operator) {
+        return ResponseEntity.ok(adminService.getOnlineDriversForMap());
     }
 
     @Operation(summary = "Qo'shimcha xizmatlar katalogi", description = "Buyurtmaga qo'shsa bo'ladigan xizmatlar ro'yxati (kod, nom, narx tiyinda).")
