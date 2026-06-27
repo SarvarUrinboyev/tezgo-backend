@@ -456,6 +456,7 @@ public class OperatorService {
                 m.put("driverName", t.getDriver().getUser() != null ? t.getDriver().getUser().getName() : "");
                 m.put("driverPhone", t.getDriver().getUser() != null ? t.getDriver().getUser().getPhone() : "");
                 m.put("carNumber", t.getDriver().getCarNumber());
+                m.put("driverCode", t.getDriver().getDriverCode()); // FIX B: biriktirilgan haydovchi kodi panelda ko'rinsin
             } catch (Exception e) { /* lazy load */ }
         }
         m.put("services", ServiceCatalog.toDto(ServiceCatalog.parseCsv(t.getSelectedServices())));
