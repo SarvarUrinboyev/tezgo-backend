@@ -37,6 +37,10 @@ import java.util.stream.Collectors;
 public class OperatorService {
 
     private static final Logger log = LoggerFactory.getLogger(OperatorService.class);
+    // Audit log — har bir operator edit/cancel/reassign uchun (kim/qachon/nima o'zgardi).
+    // Alohida logger nomi → journalctl/log'dan grep qilinadi. DB jadval emas: ddl-auto=validate
+    // + integration-test yo'qligi sababli yangi entity/migration faqat prod startda tekshilardi.
+    private static final Logger AUDIT = LoggerFactory.getLogger("OPERATOR_AUDIT");
 
     private final TripRepository tripRepository;
     private final UserRepository userRepository;
@@ -248,68 +252,115 @@ public class OperatorService {
         return Map.of("tripId", tripId, "status", "CANCELLED_BY_ADMIN", "message", "Buyurtma bekor qilindi");
     }
 
-    /** Operator buyurtma manzillarini tahrirlaydi — faqat CALL + SEARCHING */
+    /**
+     * Operator post-acceptance edit — manzil B / tarif / qo'shimcha xizmatlar.
+     * Locked qaror (Sarvar): SEARCHING + ACCEPTED da to'liq tahrir (B/tarif/xizmat),
+     * narx qayta hisoblanadi; DRIVER_ARRIVED da FAQAT tarif/xizmat (manzil bloklangan)
+     * + kutish-haqi ogohlantirishi; STARTED da har qanday tahrir BLOKLANGAN.
+     * Narx MAVJUD SurgePricingService.calculate orqali qayta hisoblanadi (formula
+     * o'zgartirilmaydi). Biriktirilgan haydovchi o'zgarishni o'zining aktiv-trip
+     * pollingi orqali ko'radi — push YUBORILMAYDI (alohida "update" push turi yo'q;
+     * ORDER_PUSH yuborish FSI order-alert'ni noto'g'ri qayta yoqishi mumkin).
+     */
     @Transactional
     public Map<String, Object> editTrip(User operator, Long tripId, OperatorTripRequest req) {
         Trip trip = tripRepository.findById(tripId)
                 .orElseThrow(() -> new RuntimeException("Buyurtma topilmadi"));
 
-        if (!"CALL".equals(trip.getSource())) {
+        if (!"CALL".equals(trip.getSource()) && !"CALL_TAXOMETER".equals(trip.getSource())) {
             throw new RuntimeException("Faqat operator yaratgan buyurtmani tahrirlash mumkin");
         }
-        if (trip.getStatus() != TripStatus.SEARCHING) {
-            throw new RuntimeException("Faqat haydovchi qidirilayotgan buyurtmani tahrirlash mumkin");
+        TripStatus st = trip.getStatus();
+        if (TripStatus.TERMINAL_STATUSES.contains(st)) {
+            throw new RuntimeException("Buyurtma yakunlangan/bekor qilingan — tahrirlab bo'lmaydi");
+        }
+        if (st == TripStatus.STARTED) {
+            throw new RuntimeException("Safar boshlandi — tahrirlab bo'lmaydi (kerak bo'lsa bekor qiling)");
+        }
+        boolean addressEditable = (st == TripStatus.SEARCHING || st == TripStatus.ACCEPTED);
+        boolean taxometer = "CALL_TAXOMETER".equals(trip.getSource());
+
+        // eski qiymatlar (audit uchun)
+        String oldTo = trip.getToAddress();
+        Long oldTariffId = trip.getTariff() != null ? trip.getTariff().getId() : null;
+        String oldServices = trip.getSelectedServices();
+        Long oldTotal = trip.getTotalPrice();
+        StringBuilder changed = new StringBuilder();
+
+        // --- tarif ---
+        if (req.getTariffId() != null && (oldTariffId == null || !req.getTariffId().equals(oldTariffId))) {
+            Tariff newTariff = tariffRepository.findById(req.getTariffId())
+                    .orElseThrow(() -> new RuntimeException("Tarif topilmadi"));
+            trip.setTariff(newTariff);
+            changed.append("tariff ").append(oldTariffId).append("->").append(newTariff.getId()).append("; ");
         }
 
-        // Manzillarni yangilash
-        trip.setFromAddress(req.getPickupAddress());
-        trip.setToAddress(req.getDestinationAddress());
+        // --- xizmatlar ---
+        long servicesTotal = trip.getExtraPrice() != null ? trip.getExtraPrice() : 0L;
+        if (req.getSelectedServices() != null) {
+            List<ServiceType> svc = ServiceCatalog.parse(req.getSelectedServices());
+            servicesTotal = ServiceCatalog.totalTiyin(svc);
+            trip.setExtraPrice(servicesTotal);
+            trip.setSelectedServices(ServiceCatalog.csv(svc));
+            changed.append("services [").append(oldServices).append("]->[").append(trip.getSelectedServices()).append("]; ");
+        }
 
-        // Koordinatalar yangilash
-        double fromLat = (req.getFromLat() != null) ? req.getFromLat() : trip.getFromLat();
-        double fromLon = (req.getFromLon() != null) ? req.getFromLon() : trip.getFromLon();
-        double toLat = (req.getToLat() != null) ? req.getToLat() : trip.getToLat();
-        double toLon = (req.getToLon() != null) ? req.getToLon() : trip.getToLon();
+        // --- manzil A/B — faqat SEARCHING/ACCEPTED, taxometer'da yo'q ---
+        boolean addrRequested = req.getDestinationAddress() != null || req.getToLat() != null
+                || req.getPickupAddress() != null || req.getFromLat() != null;
+        if (addrRequested) {
+            if (!addressEditable) {
+                throw new RuntimeException("Haydovchi yetib keldi — manzilni o'zgartirib bo'lmaydi (faqat tarif/xizmat)");
+            }
+            if (taxometer) {
+                throw new RuntimeException("Taxometr rejimida manzil o'zgartirilmaydi");
+            }
+            if (req.getPickupAddress() != null) trip.setFromAddress(req.getPickupAddress());
+            if (req.getDestinationAddress() != null) trip.setToAddress(req.getDestinationAddress());
+            if (req.getFromLat() != null) trip.setFromLat(req.getFromLat());
+            if (req.getFromLon() != null) trip.setFromLon(req.getFromLon());
+            if (req.getToLat() != null) trip.setToLat(req.getToLat());
+            if (req.getToLon() != null) trip.setToLon(req.getToLon());
+            changed.append("dest '").append(oldTo).append("'->'").append(trip.getToAddress()).append("'; ");
+        }
 
-        trip.setFromLat(fromLat);
-        trip.setFromLon(fromLon);
-        trip.setToLat(toLat);
-        trip.setToLon(toLon);
-
-        // Narxni qayta hisoblash
-        double distanceKm = DriverLocationCache.haversineKm(fromLat, fromLon, toLat, toLon);
-        distanceKm = Math.max(distanceKm, 1.0);
-
-        Tariff tariff = trip.getTariff();
-        long effectivePricePerKm = tariff.getPricePerKm();
-        if (distanceKm > 10) effectivePricePerKm += 100000;
-        long basePrice = tariff.getBasePrice() + (long) (distanceKm * effectivePricePerKm);
-        basePrice = Math.max(basePrice, tariff.getMinPrice());
-
-        // Tungi tarif — YARATISH vaqti bo'yicha (tahrirlash vaqti emas), biznes-zonada.
-        // 01:00 da yaratilgan safar 06:30 da tahrirlansa ham tungi tarifni saqlaydi.
-        basePrice = nightFareService.applyToBaseAtCreation(basePrice, trip.getCreatedAt());
-
-        SurgeResult surge = surgePricingService.calculate(basePrice, fromLat, fromLon);
-        long finalPrice = surge.finalPriceTiyin();
-
-        // Mavjud qo'shimcha xizmatlar narxini saqlab qolish (manzil o'zgarsa ham)
-        long existingServices = trip.getExtraPrice() != null ? trip.getExtraPrice() : 0L;
-        trip.setDistanceKm(java.math.BigDecimal.valueOf(Math.round(distanceKm * 10.0) / 10.0));
-        trip.setBasePrice(finalPrice);
-        trip.setTotalPrice(finalPrice + existingServices);
+        // --- narxni qayta hisoblash: MAVJUD formula (SurgePricingService.calculate).
+        //     Taxometr'da base metered — faqat xizmatlar extra'ga ta'sir qiladi. ---
+        if (!taxometer) {
+            double fromLat = trip.getFromLat(), fromLon = trip.getFromLon();
+            double toLat = trip.getToLat(), toLon = trip.getToLon();
+            double distanceKm = Math.max(DriverLocationCache.haversineKm(fromLat, fromLon, toLat, toLon), 1.0);
+            Tariff tariff = trip.getTariff();
+            long effectivePricePerKm = tariff.getPricePerKm();
+            if (distanceKm > 10) effectivePricePerKm += 100000;
+            long basePrice = tariff.getBasePrice() + (long) (distanceKm * effectivePricePerKm);
+            basePrice = Math.max(basePrice, tariff.getMinPrice());
+            basePrice = nightFareService.applyToBaseAtCreation(basePrice, trip.getCreatedAt());
+            SurgeResult surge = surgePricingService.calculate(basePrice, fromLat, fromLon);
+            long finalPrice = surge.finalPriceTiyin();
+            trip.setDistanceKm(java.math.BigDecimal.valueOf(Math.round(distanceKm * 10.0) / 10.0));
+            trip.setBasePrice(finalPrice);
+            trip.setTotalPrice(finalPrice + servicesTotal);
+        } else {
+            long base = trip.getBasePrice() != null ? trip.getBasePrice() : 0L;
+            trip.setTotalPrice(base + servicesTotal);
+        }
 
         tripRepository.save(trip);
 
-        log.info("[OPERATOR] Buyurtma #{} tahrirlandi (operator={})", tripId, operator.getPhone());
+        AUDIT.info("[AUDIT][OPERATOR] action=EDIT operator={} operatorId={} tripId={} status={} changes=[{}] total {}->{}",
+                operator.getPhone(), operator.getId(), tripId, st.name(),
+                changed.toString().trim(), oldTotal, trip.getTotalPrice());
 
         Map<String, Object> result = new HashMap<>();
         result.put("tripId", tripId);
-        result.put("status", trip.getStatus().name());
-        result.put("pickupAddress", req.getPickupAddress());
-        result.put("destinationAddress", req.getDestinationAddress());
-        result.put("estimatedPrice", finalPrice / 100);
-        result.put("estimatedDistance", Math.round(distanceKm * 10.0) / 10.0 + " km");
+        result.put("status", st.name());
+        result.put("destinationAddress", trip.getToAddress());
+        result.put("tariffName", trip.getTariff() != null ? trip.getTariff().getName() : null);
+        result.put("estimatedPrice", trip.getTotalPrice() != null ? trip.getTotalPrice() / 100 : 0);
+        if (st == TripStatus.DRIVER_ARRIVED) {
+            result.put("warning", "Haydovchi yetib keldi — kutish haqi hisoblanayotgan bo'lishi mumkin (60s bepul). Tahrir kutish haqiga ta'sir qilmaydi.");
+        }
         result.put("message", "Buyurtma tahrirlandi");
         return result;
     }
