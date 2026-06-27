@@ -305,10 +305,16 @@ public class OperatorService {
             changed.append("services [").append(oldServices).append("]->[").append(trip.getSelectedServices()).append("]; ");
         }
 
-        // --- manzil A/B — faqat SEARCHING/ACCEPTED, taxometer'da yo'q ---
-        boolean addrRequested = req.getDestinationAddress() != null || req.getToLat() != null
-                || req.getPickupAddress() != null || req.getFromLat() != null;
-        if (addrRequested) {
+        // --- manzil A/B — faqat SEARCHING/ACCEPTED, taxometer'da yo'q.
+        //     "O'zgartirish" deb faqat HAQIQATAN farq qilsa hisoblanadi: panel har doim
+        //     joriy manzilni yuboradi, shuning uchun no-op yuborish DRIVER_ARRIVED'da
+        //     (tarif/xizmat tahriri) xato bermasligi kerak. ---
+        boolean addrChanged =
+                (req.getPickupAddress() != null && !req.getPickupAddress().equals(trip.getFromAddress()))
+                || (req.getDestinationAddress() != null && !req.getDestinationAddress().equals(trip.getToAddress()))
+                || (req.getFromLat() != null && !req.getFromLat().equals(trip.getFromLat()))
+                || (req.getToLat() != null && !req.getToLat().equals(trip.getToLat()));
+        if (addrChanged) {
             if (!addressEditable) {
                 throw new RuntimeException("Haydovchi yetib keldi — manzilni o'zgartirib bo'lmaydi (faqat tarif/xizmat)");
             }
@@ -405,6 +411,9 @@ public class OperatorService {
         m.put("createdAt", t.getCreatedAt().toString());
         m.put("source", t.getSource());
         m.put("tripMode", "CALL_TAXOMETER".equals(t.getSource()) ? "TAXOMETER" : "FIXED");
+        // tariffId — operator panel post-acceptance edit'da tarifni to'g'ri preload qilish uchun
+        m.put("tariffId", t.getTariff() != null ? t.getTariff().getId() : null);
+        m.put("tariffName", t.getTariff() != null ? t.getTariff().getName() : null);
         if (t.getPassenger() != null) {
             m.put("passengerPhone", t.getPassenger().getPhone());
         }
