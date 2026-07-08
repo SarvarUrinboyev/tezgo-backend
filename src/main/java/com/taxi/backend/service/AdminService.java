@@ -10,6 +10,8 @@ import com.taxi.backend.model.*;
 import com.taxi.backend.model.Trip;
 import com.taxi.backend.repository.*;
 import com.taxi.backend.repository.DriverServiceRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -28,6 +30,8 @@ import java.util.stream.Collectors;
 @Service
 public class AdminService {
 
+    private static final Logger log = LoggerFactory.getLogger(AdminService.class);
+
     private final DriverRepository driverRepository;
     private final DriverPhotoRepository driverPhotoRepository;
     private final DriverServiceRepository driverServiceRepository;
@@ -41,6 +45,7 @@ public class AdminService {
     // Band 5 (admin order mgmt) — tariff change + reassign push
     private final TariffRepository tariffRepository;
     private final AsyncNotificationService asyncNotifier;
+    private final PhotoService photoService;
 
     public AdminService(DriverRepository driverRepository,
             DriverPhotoRepository driverPhotoRepository,
@@ -53,7 +58,8 @@ public class AdminService {
             TransactionRepository transactionRepository,
             ChatService chatService,
             TariffRepository tariffRepository,
-            AsyncNotificationService asyncNotifier) {
+            AsyncNotificationService asyncNotifier,
+            PhotoService photoService) {
         this.driverRepository = driverRepository;
         this.driverPhotoRepository = driverPhotoRepository;
         this.driverServiceRepository = driverServiceRepository;
@@ -66,6 +72,7 @@ public class AdminService {
         this.chatService = chatService;
         this.tariffRepository = tariffRepository;
         this.asyncNotifier = asyncNotifier;
+        this.photoService = photoService;
     }
 
     /** Dashboard statistika */
@@ -217,6 +224,20 @@ public class AdminService {
         photo.setReviewedBy(admin);
         driverPhotoRepository.save(photo);
         return Map.of("message", "Rasm rad etildi");
+    }
+
+    /**
+     * Rasmni o'chirish (ADMIN) — driver-app'dagi DRIVER_FACE/SELFIE immutability qulfini chetlab
+     * o'tadi (qulf faqat haydovchi tomoni uchun; admin har doim o'chira oladi). Sabab majburiy
+     * (RejectRequest orqali @Valid tekshiriladi) — audit uchun log'ga yoziladi (bu loyihada har
+     * qanday admin amali xuddi shunday log qilinadi, alohida audit jadvali yo'q).
+     */
+    public Map<String, Object> deletePhoto(Long photoId, String reason, User admin) {
+        DriverPhoto deleted = photoService.adminDeletePhoto(photoId);
+        log.info("[ADMIN][PHOTO_DELETE] driverId={}, type={}, adminId={}, adminName={}, reason={}",
+                deleted.getDriver() != null ? deleted.getDriver().getId() : null,
+                deleted.getPhotoType(), admin.getId(), admin.getName(), reason);
+        return Map.of("deleted", true, "type", deleted.getPhotoType().name());
     }
 
     /** Broadcast xabar yuborish (target=ALL/ACTIVE/OFFLINE). Eski API — driverId yo'q.

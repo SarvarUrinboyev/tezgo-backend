@@ -239,6 +239,36 @@ public class PhotoService {
     }
 
     /**
+     * ADMIN uchun — istalgan turdagi rasmni o'chiradi, DRIVER_FACE/SELFIE immutability tekshiruvini
+     * QASDAN chetlab o'tadi (faqat AdminController orqali, ADMIN roli talab qilinadi — shu yerda
+     * qayta tekshirilmaydi). O'chirilgan qatorni qaytaradi (chaqiruvchi driverId/type'ni log qilish
+     * uchun ishlatadi — bu paytda DB'dan allaqachon o'chirilgan bo'ladi).
+     */
+    public DriverPhoto adminDeletePhoto(Long photoId) {
+        DriverPhoto photo = photoRepository.findById(photoId)
+                .orElseThrow(() -> new RuntimeException("Rasm topilmadi"));
+        try {
+            Path uploadRoot = getUploadRoot();
+            String oldUrl = photo.getPhotoUrl();
+            Path oldFile = null;
+            if (oldUrl.startsWith("/uploads/drivers/")) {
+                oldFile = uploadRoot.resolve(oldUrl.replace("/uploads/drivers/", "drivers/")).normalize();
+            } else if (oldUrl.startsWith("/api/photos/view/")) {
+                oldFile = uploadRoot.resolve("drivers").resolve(
+                        oldUrl.replace("/api/photos/view/", "")
+                                .replace("/", java.io.File.separator)).normalize();
+            }
+            if (oldFile != null && oldFile.startsWith(uploadRoot)) {
+                Files.deleteIfExists(oldFile);
+            }
+        } catch (Exception e) {
+            log.warn("Admin o'chirishda fayl xatosi: {}", e.getMessage());
+        }
+        photoRepository.delete(photo);
+        return photo;
+    }
+
+    /**
      * Selfie'ni avatar (DRIVER_FACE) sifatida ham saqlaydi — bir xil URL, fayl qayta nusxalanmaydi.
      * Eski avatar (agar shu feature'dan OLDIN to'g'ridan-to'g'ri yuklangan bo'lsa) bosib yoziladi —
      * chunki avatar hali "qulflanmagan" edi (selfie yo'q edi). Shundan keyin uploadPhoto'dagi

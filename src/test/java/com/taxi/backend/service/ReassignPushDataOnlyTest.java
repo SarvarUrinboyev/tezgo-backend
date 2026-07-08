@@ -63,6 +63,7 @@ class ReassignPushDataOnlyTest {
     @Mock private StringRedisTemplate redis;
     @Mock private ValueOperations<String, String> valueOps;
     @Mock private DriverRepository pushDriverRepository;
+    @Mock private PhotoService photoService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -73,7 +74,8 @@ class ReassignPushDataOnlyTest {
         // 1) AdminService.adminReassignTripToDriver reassign pushData'ni quradi (kuzatamiz)
         AdminService admin = new AdminService(driverRepository, driverPhotoRepository, driverServiceRepository,
                 tripRepository, broadcastMessageRepository, userRepository, messagingTemplate,
-                ratingRepository, transactionRepository, chatService, tariffRepository, asyncNotifier);
+                ratingRepository, transactionRepository, chatService, tariffRepository, asyncNotifier,
+                photoService);
 
         Trip trip = new Trip();
         trip.setId(777L);

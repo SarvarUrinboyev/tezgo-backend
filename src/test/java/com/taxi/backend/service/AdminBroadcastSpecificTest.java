@@ -42,6 +42,7 @@ class AdminBroadcastSpecificTest {
     @Mock private ChatService chatService;
     @Mock private TariffRepository tariffRepository;
     @Mock private AsyncNotificationService asyncNotifier;
+    @Mock private PhotoService photoService;
 
     private AdminService service;
 
@@ -49,7 +50,8 @@ class AdminBroadcastSpecificTest {
     void setup() {
         service = new AdminService(driverRepository, driverPhotoRepository, driverServiceRepository,
                 tripRepository, broadcastMessageRepository, userRepository, messagingTemplate,
-                ratingRepository, transactionRepository, chatService, tariffRepository, asyncNotifier);
+                ratingRepository, transactionRepository, chatService, tariffRepository, asyncNotifier,
+                photoService);
     }
 
     private User admin() {

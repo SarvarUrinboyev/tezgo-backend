@@ -234,6 +234,22 @@ public class AdminController {
         return ResponseEntity.ok(adminService.rejectPhoto(id, req.getReason(), admin));
     }
 
+    /**
+     * Rasmni o'chirish — DRIVER_FACE/SELFIE ham kiradi (driver-app'dagi immutability qulfi faqat
+     * haydovchi tomoni uchun; admin har doim o'chira oladi, masalan rad etilgan selfie'ni qayta
+     * yuklash imkonini berish uchun). Sabab majburiy.
+     */
+    @DeleteMapping("/photos/{id}")
+    public ResponseEntity<?> deletePhoto(@PathVariable Long id,
+            @Valid @RequestBody com.taxi.backend.dto.RejectRequest req,
+            @AuthenticationPrincipal User admin) {
+        try {
+            return ResponseEntity.ok(adminService.deletePhoto(id, req.getReason(), admin));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     /** Broadcast xabar yuborish. target=DRIVER bo'lsa, driverId majburiy (faqat o'sha haydovchiga yuboriladi). */
     @PostMapping("/messages/broadcast")
     public ResponseEntity<?> broadcast(@Valid @RequestBody com.taxi.backend.dto.BroadcastRequest req,
