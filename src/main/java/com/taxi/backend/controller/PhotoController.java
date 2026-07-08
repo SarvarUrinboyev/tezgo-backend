@@ -42,4 +42,13 @@ public class PhotoController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
+
+    @DeleteMapping({"/api/driver/photos/{type}", "/api/photos/{type}"})
+    public ResponseEntity<?> delete(@AuthenticationPrincipal User user, @PathVariable String type) {
+        try {
+            return ResponseEntity.ok(photoService.deletePhoto(user, type));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 }

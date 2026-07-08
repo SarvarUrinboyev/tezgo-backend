@@ -55,7 +55,7 @@ public class TripService {
     @Value("${app.commission.percent:10}") // TezYol commission rate — change here only
     private double commissionPercent;
 
-    @Value("${app.waiting.price-per-minute:200000}")
+    @Value("${app.waiting.price-per-minute:60000}")
     private long waitingPricePerMinute;
 
     @Value("${app.waiting.free-seconds:60}")

@@ -178,6 +178,45 @@ public class PhotoService {
         }
     }
 
+    /** Rasmni butunlay o'chirish — DB qatori + diskdagi fayl (upload'dagi eski-fayl o'chirish yo'li bilan bir xil). */
+    public Map<String, Object> deletePhoto(User user, String photoTypeStr) {
+        Driver driver = driverRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
+
+        PhotoType photoType;
+        try {
+            photoType = PhotoType.valueOf(photoTypeStr.toUpperCase());
+        } catch (Exception e) {
+            throw new RuntimeException("Noto'g'ri rasm turi: " + photoTypeStr);
+        }
+
+        DriverPhoto photo = photoRepository.findByDriverIdAndPhotoType(driver.getId(), photoType)
+                .orElseThrow(() -> new RuntimeException("Rasm topilmadi"));
+
+        try {
+            Path uploadRoot = getUploadRoot();
+            String oldUrl = photo.getPhotoUrl();
+            Path oldFile = null;
+            if (oldUrl.startsWith("/uploads/drivers/")) {
+                oldFile = uploadRoot.resolve(oldUrl.replace("/uploads/drivers/", "drivers/")).normalize();
+            } else if (oldUrl.startsWith("/api/photos/view/")) {
+                oldFile = uploadRoot.resolve("drivers").resolve(
+                        oldUrl.replace("/api/photos/view/", "")
+                                .replace("/", java.io.File.separator)).normalize();
+            }
+            if (oldFile != null && oldFile.startsWith(uploadRoot)) {
+                Files.deleteIfExists(oldFile);
+            }
+        } catch (Exception e) {
+            log.warn("Rasm faylini o'chirishda xato: {}", e.getMessage());
+        }
+
+        photoRepository.delete(photo);
+        log.info("Rasm o'chirildi: driverId={}, type={}", driver.getId(), photoType);
+
+        return Map.of("deleted", true, "type", photoType.name());
+    }
+
     /** Protected photo serving — DRIVER faqat o'z rasmlari, ADMIN/OPERATOR hamma */
     public ResponseEntity<Resource> servePhoto(User user, Long driverId, String filename) {
         if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
