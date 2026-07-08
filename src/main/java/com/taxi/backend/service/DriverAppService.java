@@ -2,9 +2,11 @@ package com.taxi.backend.service;
 
 import com.taxi.backend.dto.response.*;
 import com.taxi.backend.enums.DriverStatus;
+import com.taxi.backend.enums.PhotoType;
 import com.taxi.backend.enums.ServiceType;
 import com.taxi.backend.enums.TripStatus;
 import com.taxi.backend.enums.TransactionType;
+import com.taxi.backend.exception.ForbiddenException;
 import com.taxi.backend.model.*;
 import com.taxi.backend.model.Tariff;
 import com.taxi.backend.repository.*;
@@ -148,6 +150,10 @@ public class DriverAppService {
             throw new RuntimeException("Siz hali tasdiqlanmagansiz");
 
         boolean newOnline = !driver.isOnline();
+        // Selfie gate — onlaynga chiqishdan oldin selfie yuklangan bo'lishi shart (offline'ga chiqishga tegmaydi).
+        if (newOnline && driverPhotoRepository.findByDriverIdAndPhotoType(driver.getId(), PhotoType.SELFIE).isEmpty()) {
+            throw new ForbiddenException("Onlaynga chiqish uchun avval selfie yuklang");
+        }
         driver.setOnline(newOnline);
         driver.setUpdatedAt(LocalDateTime.now());
         // Online bo'lganda — "bo'sh bo'lgan vaqt" (free_since) yangilanadi (matching tie-break uchun)

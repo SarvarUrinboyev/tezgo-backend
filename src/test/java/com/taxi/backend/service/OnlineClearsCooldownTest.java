@@ -51,6 +51,10 @@ class OnlineClearsCooldownTest {
         driver.setLongitude(69.60);
         driver.setOrderCooldownUntil(LocalDateTime.now().plusSeconds(60)); // cooldown FAOL
         when(driverRepository.findByUserId(100L)).thenReturn(Optional.of(driver));
+        // Selfie gate — bu test online bo'lish-o'zi emas, cooldown tozalanishini tekshiradi;
+        // haydovchida selfie borligini mock qilamiz (aks holda ForbiddenException chiqadi).
+        when(driverPhotoRepository.findByDriverIdAndPhotoType(5L, PhotoType.SELFIE))
+                .thenReturn(Optional.of(new DriverPhoto()));
     }
 
     @Test

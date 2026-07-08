@@ -2,6 +2,7 @@ package com.taxi.backend.service;
 
 import com.taxi.backend.enums.PhotoType;
 import com.taxi.backend.enums.Role;
+import com.taxi.backend.exception.ForbiddenException;
 import com.taxi.backend.model.Driver;
 import com.taxi.backend.model.DriverPhoto;
 import com.taxi.backend.model.User;
@@ -73,6 +74,13 @@ public class PhotoService {
             photoType = PhotoType.valueOf(photoTypeStr.toUpperCase());
         } catch (Exception e) {
             throw new RuntimeException("Noto'g'ri rasm turi: " + photoTypeStr);
+        }
+
+        // O'zgarmaslik — avatar (DRIVER_FACE) va selfie (SELFIE) bir martalik: birinchi muvaffaqiyatli
+        // yuklashdan keyin qayta yuklash/almashtirish TAQIQLANADI (UI yashirish yetarli emas, API o'zi rad etadi).
+        if ((photoType == PhotoType.DRIVER_FACE || photoType == PhotoType.SELFIE)
+                && photoRepository.findByDriverIdAndPhotoType(driver.getId(), photoType).isPresent()) {
+            throw new ForbiddenException("Bu rasm turini almashtirib bo'lmaydi (bir martalik, o'zgarmas)");
         }
 
         // === XAVFSIZLIK TEKSHIRUVLARI ===
@@ -172,6 +180,13 @@ public class PhotoService {
 
             log.info("Rasm yuklandi: driverId={}, type={}, url={}", driver.getId(), photoType, url);
 
+            // Selfie birinchi marta yuklanganda — xuddi shu rasm avatar (DRIVER_FACE) sifatida ham
+            // avtomatik saqlanadi (bo'sh avatar muammosini ham hal qiladi). Bu yerda immutability
+            // tekshiruvi QASDAN chetlab o'tiladi — bu tizimning o'zi qiladigan yagona yozuv.
+            if (photoType == PhotoType.SELFIE) {
+                copyToAvatar(driver, url, uploadRoot);
+            }
+
             return Map.of("url", url, "type", photoType.name(), "status", "PENDING");
         } catch (IOException e) {
             throw new RuntimeException("Faylni saqlashda xato: " + e.getMessage());
@@ -188,6 +203,12 @@ public class PhotoService {
             photoType = PhotoType.valueOf(photoTypeStr.toUpperCase());
         } catch (Exception e) {
             throw new RuntimeException("Noto'g'ri rasm turi: " + photoTypeStr);
+        }
+
+        // O'zgarmaslik — avatar (DRIVER_FACE) va selfie (SELFIE) hech qachon o'chirilmaydi, mavjud
+        // bo'lsa ham, bo'lmasa ham (turi bo'yicha shartsiz taqiq).
+        if (photoType == PhotoType.DRIVER_FACE || photoType == PhotoType.SELFIE) {
+            throw new ForbiddenException("Bu rasmni o'chirib bo'lmaydi (bir martalik, o'zgarmas)");
         }
 
         DriverPhoto photo = photoRepository.findByDriverIdAndPhotoType(driver.getId(), photoType)
@@ -215,6 +236,43 @@ public class PhotoService {
         log.info("Rasm o'chirildi: driverId={}, type={}", driver.getId(), photoType);
 
         return Map.of("deleted", true, "type", photoType.name());
+    }
+
+    /**
+     * Selfie'ni avatar (DRIVER_FACE) sifatida ham saqlaydi — bir xil URL, fayl qayta nusxalanmaydi.
+     * Eski avatar (agar shu feature'dan OLDIN to'g'ridan-to'g'ri yuklangan bo'lsa) bosib yoziladi —
+     * chunki avatar hali "qulflanmagan" edi (selfie yo'q edi). Shundan keyin uploadPhoto'dagi
+     * immutability tekshiruvi DRIVER_FACE'ni abadiy qulflaydi.
+     */
+    private void copyToAvatar(Driver driver, String selfieUrl, Path uploadRoot) {
+        photoRepository.findByDriverIdAndPhotoType(driver.getId(), PhotoType.DRIVER_FACE)
+                .ifPresent(oldAvatar -> {
+                    try {
+                        String oldUrl = oldAvatar.getPhotoUrl();
+                        if (oldUrl.equals(selfieUrl)) return; // allaqachon shu faylga ishora qiladi
+                        Path oldFile = null;
+                        if (oldUrl.startsWith("/uploads/drivers/")) {
+                            oldFile = uploadRoot.resolve(oldUrl.replace("/uploads/drivers/", "drivers/")).normalize();
+                        } else if (oldUrl.startsWith("/api/photos/view/")) {
+                            oldFile = uploadRoot.resolve("drivers").resolve(
+                                    oldUrl.replace("/api/photos/view/", "")
+                                            .replace("/", java.io.File.separator)).normalize();
+                        }
+                        if (oldFile != null && oldFile.startsWith(uploadRoot)) {
+                            Files.deleteIfExists(oldFile);
+                        }
+                    } catch (Exception e) {
+                        log.warn("Eski avatar faylini o'chirishda xato: {}", e.getMessage());
+                    }
+                });
+        DriverPhoto avatar = photoRepository.findByDriverIdAndPhotoType(driver.getId(), PhotoType.DRIVER_FACE)
+                .orElse(new DriverPhoto());
+        avatar.setDriver(driver);
+        avatar.setPhotoType(PhotoType.DRIVER_FACE);
+        avatar.setPhotoUrl(selfieUrl);
+        avatar.setStatus(com.taxi.backend.enums.PhotoStatus.PENDING);
+        photoRepository.save(avatar);
+        log.info("Selfie avatarga nusxalandi: driverId={}, url={}", driver.getId(), selfieUrl);
     }
 
     /** Protected photo serving — DRIVER faqat o'z rasmlari, ADMIN/OPERATOR hamma */
