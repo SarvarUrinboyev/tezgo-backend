@@ -1306,6 +1306,10 @@ public class TripService {
         m.put("waitingFee", t.getWaitingPrice() != null ? t.getWaitingPrice() : 0L);
         m.put("freeSeconds", waitingFreeSeconds);
         m.put("waitingPricePerMinute", waitingPricePerMinute);
+        // Safar davomidagi kutish narxi (klient live-tikker uchun) — avvalgi versiyada bu maydon
+        // yuborilmagan edi, shuning uchun driver-app hardcode 2500 ishlatgan (TRIP_WAITING_PRICE_PER_MINUTE
+        // o'zgarganda ham yangilanmasdi). Endi waitingPricePerMinute bilan bir xil pattern.
+        m.put("tripWaitingPricePerMinute", tripWaitingPricePerMinute);
         m.put("tripWaitingStartedAt", t.getTripWaitingStartedAt() != null ? t.getTripWaitingStartedAt().toString() : null);
         m.put("tripWaitingEndedAt", t.getTripWaitingEndedAt() != null ? t.getTripWaitingEndedAt().toString() : null);
         m.put("tripWaitingPrice", t.getTripWaitingPrice() != null ? t.getTripWaitingPrice() : 0L);
