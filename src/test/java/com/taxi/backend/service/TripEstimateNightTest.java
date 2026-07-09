@@ -71,7 +71,7 @@ class TripEstimateNightTest {
         return new TripService(tripRepository, driverRepository, tariffRepository,
                 transactionRepository, ratingRepository, messagingTemplate, matchingService,
                 surgePricingService, Optional.empty(), pushService, promoCodeService,
-                asyncNotifier, notificationHelper, securityMonitor, smsInviteService, nf, org.mockito.Mockito.mock(com.taxi.backend.service.ReferralService.class));
+                asyncNotifier, notificationHelper, securityMonitor, smsInviteService, nf, org.mockito.Mockito.mock(com.taxi.backend.service.ReferralService.class), org.mockito.Mockito.mock(com.taxi.backend.repository.DriverPhotoRepository.class));
     }
 
     private Tariff ekonom() {

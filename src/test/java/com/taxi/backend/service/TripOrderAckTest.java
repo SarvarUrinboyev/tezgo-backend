@@ -51,6 +51,7 @@ class TripOrderAckTest {
     @Mock private SmsInviteService smsInviteService;
     @Mock private NightFareService nightFareService;
     @Mock private ReferralService referralService;
+    @Mock private DriverPhotoRepository driverPhotoRepository;
 
     private TripService service;
     private User driverUser;
@@ -64,7 +65,7 @@ class TripOrderAckTest {
                 ratingRepository, messagingTemplate, matchingService, surgePricingService,
                 Optional.<TripEventProducer>empty(), pushService, promoCodeService,
                 asyncNotifier, notificationHelper, securityMonitor, smsInviteService,
-                nightFareService, referralService);
+                nightFareService, referralService, driverPhotoRepository);
 
         driverUser = new User();
         driverUser.setId(8L);

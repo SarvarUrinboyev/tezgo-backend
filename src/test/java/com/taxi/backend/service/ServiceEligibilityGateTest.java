@@ -61,7 +61,7 @@ class ServiceEligibilityGateTest {
                 transactionRepository, ratingRepository, messagingTemplate, matchingService,
                 surgePricingService, Optional.empty(), pushService, promoCodeService,
                 asyncNotifier, notificationHelper, securityMonitor, smsInviteService,
-                new com.taxi.backend.pricing.NightFareService(0, 0, 0, java.time.Clock.systemUTC()), org.mockito.Mockito.mock(com.taxi.backend.service.ReferralService.class));
+                new com.taxi.backend.pricing.NightFareService(0, 0, 0, java.time.Clock.systemUTC()), org.mockito.Mockito.mock(com.taxi.backend.service.ReferralService.class), org.mockito.Mockito.mock(com.taxi.backend.repository.DriverPhotoRepository.class));
         ReflectionTestUtils.setField(tripService, "commissionPercent", 10.0);
         ReflectionTestUtils.setField(tripService, "matchingRadiusKm", 5.0);
 

@@ -48,6 +48,7 @@ public class TripService {
     private final SmsInviteService smsInviteService;
     private final com.taxi.backend.pricing.NightFareService nightFareService;
     private final ReferralService referralService;
+    private final DriverPhotoRepository driverPhotoRepository;
 
     @Value("${matching.radius-km:5.0}")
     private double matchingRadiusKm;
@@ -98,7 +99,8 @@ public class TripService {
             SecurityMonitorService securityMonitor,
             SmsInviteService smsInviteService,
             com.taxi.backend.pricing.NightFareService nightFareService,
-            ReferralService referralService) {
+            ReferralService referralService,
+            DriverPhotoRepository driverPhotoRepository) {
         this.tripRepository = tripRepository;
         this.driverRepository = driverRepository;
         this.tariffRepository = tariffRepository;
@@ -116,6 +118,7 @@ public class TripService {
         this.smsInviteService = smsInviteService;
         this.nightFareService = nightFareService;
         this.referralService = referralService;
+        this.driverPhotoRepository = driverPhotoRepository;
     }
 
     /** Narx hisoblash — surge pricing bilan */
@@ -1346,6 +1349,13 @@ public class TripService {
                 log.debug("tripToMap: driver.user lazy load xato (tripId={}): {}", t.getId(), e.getMessage());
                 m.put("driverName", "");
                 m.put("driverPhone", "");
+            }
+            try {
+                m.put("driverPhotoUrl", driverPhotoRepository.findByDriverIdAndPhotoType(
+                    d.getId(), com.taxi.backend.enums.PhotoType.DRIVER_FACE
+                ).map(p -> p.getPhotoUrl()).orElse(null));
+            } catch (Exception e) {
+                m.put("driverPhotoUrl", null);
             }
         }
         if (t.getPassenger() != null) {

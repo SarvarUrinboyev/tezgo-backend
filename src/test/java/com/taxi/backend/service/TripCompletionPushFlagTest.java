@@ -58,6 +58,7 @@ class TripCompletionPushFlagTest {
     @Mock private SmsInviteService smsInviteService;
     @Mock private NightFareService nightFareService;
     @Mock private ReferralService referralService;
+    @Mock private DriverPhotoRepository driverPhotoRepository;
     @Mock private TripEventProducer eventProducer;
 
     private TripService service;
@@ -75,7 +76,7 @@ class TripCompletionPushFlagTest {
                 ratingRepository, messagingTemplate, matchingService, surgePricingService,
                 Optional.of(eventProducer), pushService, promoCodeService,
                 asyncNotifier, notificationHelper, securityMonitor, smsInviteService,
-                nightFareService, referralService);
+                nightFareService, referralService, driverPhotoRepository);
 
         // Set @Value injection default (false). Each test overrides as needed.
         ReflectionTestUtils.setField(service, "tripCompletionPushEnabled", false);
