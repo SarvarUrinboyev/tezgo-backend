@@ -101,6 +101,7 @@ public class PassengerController {
     @GetMapping("/banners")
     public ResponseEntity<?> getBanners() {
         List<Map<String, Object>> result = bannerRepository.findActiveInRange(LocalDateTime.now()).stream()
+                .limit(10)
                 .map(b -> {
                     Map<String, Object> m = new HashMap<>();
                     m.put("id", b.getId());

@@ -67,6 +67,8 @@ public class SecurityConfig {
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/tariffs").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/places").permitAll()
+                        // Banner (reklama) rasmlari — passenger-app karuselida hammaga ochiq ko'rsatiladi
+                        .requestMatchers(HttpMethod.GET, "/api/public/banners/**").permitAll()
                         // To'lov callback'lari (Payme/Click serverlari chaqiradi)
                         .requestMatchers("/api/payment/payme",
                                 "/api/payment/click/prepare",

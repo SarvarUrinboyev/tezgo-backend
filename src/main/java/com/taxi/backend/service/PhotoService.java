@@ -344,6 +344,101 @@ public class PhotoService {
         }
     }
 
+    /**
+     * ADMIN uchun — banner (reklama) rasmi yuklash. Haydovchi rasmlaridan farqli o'laroq
+     * alohida "banners/" papkasida saqlanadi va OMMAVIY (auth'siz) URL qaytaradi —
+     * servePublicBannerImage orqali serve qilinadi, driver rasmlarining protected
+     * /api/photos/view yo'liga hech qanday aloqasi yo'q.
+     */
+    public Map<String, Object> uploadBannerImage(MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new RuntimeException("Fayl bo'sh");
+        }
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw new RuntimeException("Fayl hajmi 10MB dan oshmasligi kerak");
+        }
+
+        String contentType = file.getContentType();
+        if (contentType == null || !ALLOWED_TYPES.contains(contentType.toLowerCase())) {
+            throw new RuntimeException("Faqat JPG, PNG, WebP formatlar ruxsat etiladi");
+        }
+
+        String ext = getExtension(file.getOriginalFilename());
+        if (!ALLOWED_EXTENSIONS.contains(ext.toLowerCase())) {
+            throw new RuntimeException("Noto'g'ri fayl kengaytmasi: " + ext);
+        }
+
+        try {
+            byte[] header = new byte[12];
+            try (InputStream is = file.getInputStream()) {
+                int read = is.read(header);
+                if (read < 4) throw new RuntimeException("Fayl juda kichik");
+            }
+            if (!isValidImageMagic(header)) {
+                throw new RuntimeException("Fayl haqiqiy rasm emas (magic bytes noto'g'ri)");
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Faylni o'qishda xato");
+        }
+
+        String safeFilename = "banner_" + UUID.randomUUID() + ext.toLowerCase();
+
+        try {
+            Path uploadRoot = getUploadRoot();
+            Path dir = uploadRoot.resolve("banners").normalize();
+            Files.createDirectories(dir);
+
+            Path filePath = dir.resolve(safeFilename).normalize();
+
+            // Path traversal himoyasi: fayl banners/ papkasi ichida ekanligini tekshirish
+            if (!filePath.startsWith(dir)) {
+                throw new RuntimeException("Xavfsizlik xatosi: fayl yo'li noto'g'ri");
+            }
+
+            try (InputStream input = file.getInputStream()) {
+                Files.copy(input, filePath, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            String url = "/api/public/banners/" + safeFilename;
+            log.info("Banner rasmi yuklandi: {}", url);
+            return Map.of("url", url);
+        } catch (IOException e) {
+            throw new RuntimeException("Faylni saqlashda xato: " + e.getMessage());
+        }
+    }
+
+    /** Ommaviy banner-rasm serve qilish — auth talab qilinmaydi (bannerlar reklama, hammaga ochiq),
+     *  faqat "banners/" papkasidan — driver rasmlariga hech qanday yo'l bilan yeta olmaydi. */
+    public ResponseEntity<Resource> servePublicBannerImage(String filename) {
+        if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        Path uploadRoot = getUploadRoot();
+        Path dir = uploadRoot.resolve("banners").normalize();
+        Path filePath = dir.resolve(filename).normalize();
+        if (!filePath.startsWith(dir)) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        if (!Files.exists(filePath)) {
+            return ResponseEntity.notFound().build();
+        }
+
+        try {
+            String contentType = Files.probeContentType(filePath);
+            if (contentType == null) contentType = "application/octet-stream";
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"")
+                    .header(HttpHeaders.CACHE_CONTROL, "public, max-age=86400")
+                    .body(new FileSystemResource(filePath));
+        } catch (Exception e) {
+            log.error("Banner rasmni serv qilishda xato: {}", e.getMessage());
+            return ResponseEntity.status(500).build();
+        }
+    }
+
     /** Magic bytes orqali haqiqiy rasm ekanligini tekshirish */
     private boolean isValidImageMagic(byte[] header) {
         // JPEG: FF D8 FF

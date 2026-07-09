@@ -27,6 +27,12 @@ public class PhotoController {
         return photoService.servePhoto(user, driverId, filename);
     }
 
+    /** Ommaviy banner-rasm serve — auth SHART EMAS (bannerlar reklama, hammaga ochiq) */
+    @GetMapping("/api/public/banners/{filename}")
+    public ResponseEntity<Resource> viewBannerImage(@PathVariable String filename) {
+        return photoService.servePublicBannerImage(filename);
+    }
+
     @PostMapping({"/api/driver/photos/upload", "/api/photos/upload"})
     public ResponseEntity<?> upload(@AuthenticationPrincipal User user,
             @RequestParam("file") MultipartFile file,

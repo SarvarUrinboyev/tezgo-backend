@@ -1,15 +1,18 @@
 package com.taxi.backend.controller;
 
 import com.taxi.backend.dto.AdminTopupRequest;
+import com.taxi.backend.dto.BannerRequest;
 import com.taxi.backend.dto.SetPasswordRequest;
 import com.taxi.backend.dto.TariffRequest;
 import com.taxi.backend.exception.ConflictException;
 import com.taxi.backend.dto.response.AdminDriversPageResponse;
+import com.taxi.backend.model.Banner;
 import com.taxi.backend.model.User;
 import com.taxi.backend.service.AdminService;
 import com.taxi.backend.service.AuthService;
 import com.taxi.backend.service.PhotoService;
 import com.taxi.backend.service.TripService;
+import com.taxi.backend.repository.BannerRepository;
 import com.taxi.backend.repository.OtpRepository;
 import com.taxi.backend.repository.TariffRepository;
 import com.taxi.backend.repository.UserRepository;
@@ -42,6 +45,7 @@ public class AdminController {
     private final AuthService authService;
     private final com.taxi.backend.service.SystemSettingService systemSettingService;
     private final com.taxi.backend.service.OperatorAdminService operatorAdminService;
+    private final BannerRepository bannerRepository;
 
     public AdminController(AdminService adminService,
             PhotoService photoService,
@@ -52,7 +56,8 @@ public class AdminController {
             OtpRepository otpRepository,
             AuthService authService,
             com.taxi.backend.service.SystemSettingService systemSettingService,
-            com.taxi.backend.service.OperatorAdminService operatorAdminService) {
+            com.taxi.backend.service.OperatorAdminService operatorAdminService,
+            BannerRepository bannerRepository) {
         this.adminService = adminService;
         this.photoService = photoService;
         this.tariffRepository = tariffRepository;
@@ -63,6 +68,7 @@ public class AdminController {
         this.authService = authService;
         this.systemSettingService = systemSettingService;
         this.operatorAdminService = operatorAdminService;
+        this.bannerRepository = bannerRepository;
     }
 
     // ─── Sozlamalar: talab narxi (surge) toggle — default OFF ─────────────────
@@ -329,6 +335,67 @@ public class AdminController {
             t.setActive(req.isActive());
             return ResponseEntity.ok(tariffRepository.save(t));
         }).orElse(ResponseEntity.notFound().build());
+    }
+
+    /** Reklama bannerlari (bosh sahifa karuseli) — barchasi, faol va nofaol */
+    @GetMapping("/banners")
+    public ResponseEntity<?> banners() {
+        return ResponseEntity.ok(bannerRepository.findAll(Sort.by("sort").ascending()));
+    }
+
+    @PostMapping("/banners")
+    public ResponseEntity<?> createBanner(@Valid @RequestBody BannerRequest req) {
+        Banner banner = new Banner();
+        applyBannerRequest(banner, req);
+        return ResponseEntity.ok(bannerRepository.save(banner));
+    }
+
+    @PutMapping("/banners/{id}")
+    public ResponseEntity<?> updateBanner(@PathVariable Long id, @Valid @RequestBody BannerRequest req) {
+        return bannerRepository.findById(id).map(b -> {
+            applyBannerRequest(b, req);
+            return ResponseEntity.ok(bannerRepository.save(b));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    /** Bitta bannerni faol/nofaol qilish — to'liq formani qayta yubormasdan tez almashtirish uchun */
+    @PatchMapping("/banners/{id}/active")
+    public ResponseEntity<?> toggleBannerActive(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        return bannerRepository.findById(id).map(b -> {
+            b.setActive(Boolean.TRUE.equals(body.get("active")));
+            return ResponseEntity.ok(bannerRepository.save(b));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @DeleteMapping("/banners/{id}")
+    public ResponseEntity<?> deleteBanner(@PathVariable Long id) {
+        if (!bannerRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        bannerRepository.deleteById(id);
+        return ResponseEntity.ok(Map.of("ok", true));
+    }
+
+    /** Banner rasm yuklash — qaytgan url'ni create/update so'rovidagi imageUrl maydoniga qo'yiladi */
+    @PostMapping("/banners/upload")
+    public ResponseEntity<?> uploadBannerImage(@RequestParam("file") MultipartFile file) {
+        try {
+            return ResponseEntity.ok(photoService.uploadBannerImage(file));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    private void applyBannerRequest(Banner b, BannerRequest req) {
+        b.setTitle(req.getTitle());
+        b.setSubtitle(req.getSubtitle());
+        b.setBgColor(req.getBgColor());
+        if (req.getImageUrl() != null) b.setImageUrl(req.getImageUrl());
+        b.setLinkUrl(req.getLinkUrl());
+        b.setSort(req.getSort());
+        b.setActive(req.isActive());
+        b.setStartsAt(req.getStartsAt());
+        b.setEndsAt(req.getEndsAt());
     }
 
     /** Yo'lovchilar ro'yxati */
