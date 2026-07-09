@@ -5,6 +5,7 @@ import com.taxi.backend.dto.ContinueTripRequest;
 import com.taxi.backend.dto.EstimateRequest;
 import com.taxi.backend.dto.RateTripRequest;
 import com.taxi.backend.model.User;
+import com.taxi.backend.repository.BannerRepository;
 import com.taxi.backend.repository.TariffRepository;
 import com.taxi.backend.repository.TripRepository;
 import com.taxi.backend.repository.UserRepository;
@@ -23,6 +24,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -41,6 +44,7 @@ public class PassengerController {
     private final PushNotificationService pushService;
     private final TripRepository tripRepository;
     private final UserRepository userRepository;
+    private final BannerRepository bannerRepository;
 
     private final com.taxi.backend.service.ApiRateLimitService rateLimitService;
     private final com.taxi.backend.service.ReferralService referralService;
@@ -48,7 +52,7 @@ public class PassengerController {
     public PassengerController(TripService tripService, TariffRepository tariffRepository,
                                SurgePricingService surgePricingService, MatchingService matchingService,
                                PushNotificationService pushService, TripRepository tripRepository,
-                               UserRepository userRepository,
+                               UserRepository userRepository, BannerRepository bannerRepository,
                                com.taxi.backend.service.ApiRateLimitService rateLimitService,
                                com.taxi.backend.service.ReferralService referralService) {
         this.tripService = tripService;
@@ -58,6 +62,7 @@ public class PassengerController {
         this.pushService = pushService;
         this.tripRepository = tripRepository;
         this.userRepository = userRepository;
+        this.bannerRepository = bannerRepository;
         this.rateLimitService = rateLimitService;
         this.referralService = referralService;
     }
@@ -89,6 +94,27 @@ public class PassengerController {
     }
 
     // ─── Narx hisoblash (surge bilan) ────────────────────────────────────────
+
+    // ─── Bannerlar (bosh sahifa karuseli) ─────────────────────────────────
+
+    @Operation(summary = "Faol bannerlar", description = "Bosh sahifa karuseli uchun faol va sana oralig'idagi bannerlar, sort bo'yicha")
+    @GetMapping("/banners")
+    public ResponseEntity<?> getBanners() {
+        List<Map<String, Object>> result = bannerRepository.findActiveInRange(LocalDateTime.now()).stream()
+                .map(b -> {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("id", b.getId());
+                    m.put("title", b.getTitle());
+                    m.put("subtitle", b.getSubtitle());
+                    m.put("bgColor", b.getBgColor());
+                    m.put("imageUrl", b.getImageUrl());
+                    m.put("linkUrl", b.getLinkUrl());
+                    m.put("sort", b.getSort());
+                    return m;
+                })
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(result);
+    }
 
     @Operation(summary = "Narx hisoblash", description = "Tarif va masofaga qarab taxminiy narx hisoblaydi. Surge pricing qo'llaniladi.")
     @PostMapping("/trips/estimate")
