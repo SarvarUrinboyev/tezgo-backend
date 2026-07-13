@@ -5,6 +5,7 @@ import com.taxi.backend.enums.TripStatus;
 import com.taxi.backend.model.Driver;
 import com.taxi.backend.model.Tariff;
 import com.taxi.backend.model.Trip;
+import com.taxi.backend.model.TripDriverOffer;
 import com.taxi.backend.model.User;
 import com.taxi.backend.repository.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +48,7 @@ class AdminTripMgmtServiceTest {
     @Mock private TariffRepository tariffRepository;
     @Mock private AsyncNotificationService asyncNotifier;
     @Mock private PhotoService photoService;
+    @Mock private TripNotificationHelper notificationHelper;
 
     private AdminService service;
 
@@ -55,7 +57,7 @@ class AdminTripMgmtServiceTest {
         service = new AdminService(driverRepository, driverPhotoRepository, driverServiceRepository,
                 tripRepository, broadcastMessageRepository, userRepository, messagingTemplate,
                 ratingRepository, transactionRepository, chatService, tariffRepository, asyncNotifier,
-                photoService);
+                photoService, notificationHelper);
     }
 
     private Trip searchingTrip(long id) {
@@ -182,28 +184,16 @@ class AdminTripMgmtServiceTest {
         when(tripRepository.findById(30L)).thenReturn(Optional.of(t));
         when(driverRepository.findById(77L)).thenReturn(Optional.of(d));
 
+        TripDriverOffer offer = new TripDriverOffer();
+        offer.setExpiresAt(java.time.LocalDateTime.now().plusSeconds(15));
+        when(notificationHelper.notifySpecificDriver(30L, 77L)).thenReturn(Optional.of(offer));
+
         Map<String, Object> res = service.adminReassignTripToDriver(30L, 77L);
 
-        // PUSH chaqirig'i tekshiruvi
-        ArgumentCaptor<Long> driverIdCap = ArgumentCaptor.forClass(Long.class);
-        ArgumentCaptor<String> titleCap = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<String> bodyCap = ArgumentCaptor.forClass(String.class);
-        ArgumentCaptor<Map<String, Object>> dataCap = ArgumentCaptor.forClass(Map.class);
-        verify(asyncNotifier).pushDriverAsync(driverIdCap.capture(), titleCap.capture(),
-                bodyCap.capture(), dataCap.capture());
-        assertEquals(77L, driverIdCap.getValue());
-        assertNull(titleCap.getValue(), "data-only push: title null bo'lishi kerak");
-        assertNull(bodyCap.getValue(), "data-only push: body null bo'lishi kerak");
-        Map<String, Object> data = dataCap.getValue();
-        assertEquals("ORDER_PUSH", data.get("type"));
-        assertEquals("ORDER_PUSH", data.get("event"));
-        assertEquals(30L, data.get("tripId"));
-        assertEquals("From X", data.get("fromAddress"));
-        assertEquals("To Y", data.get("toAddress"));
-        assertTrue(data.containsKey("offerExpiresAt"));
-
-        // WebSocket chaqirig'i ham bajarilishi kerak (foreground holatdagi NEW_ORDER modal uchun)
-        verify(asyncNotifier).notifyDriverAsync(eq(77L), argThat(m -> "NEW_ORDER".equals(m.get("type"))));
+        // Admin path creates the durable offer; delivery itself remains owned by
+        // TripOfferDeliveryService, never by a second push builder here.
+        verify(notificationHelper).notifySpecificDriver(30L, 77L);
+        verifyNoInteractions(asyncNotifier);
 
         assertEquals(30L, res.get("tripId"));
         assertEquals(77L, res.get("driverId"));
@@ -219,8 +209,7 @@ class AdminTripMgmtServiceTest {
         when(tripRepository.findById(30L)).thenReturn(Optional.of(t));
 
         assertThrows(RuntimeException.class, () -> service.adminReassignTripToDriver(30L, 77L));
-        verify(asyncNotifier, never()).pushDriverAsync(any(), any(), any(), any());
-        verify(asyncNotifier, never()).notifyDriverAsync(any(), any());
+        verifyNoInteractions(notificationHelper);
         verify(driverRepository, never()).findById(any());
     }
 
@@ -236,7 +225,6 @@ class AdminTripMgmtServiceTest {
         RuntimeException ex = assertThrows(RuntimeException.class,
                 () -> service.adminReassignTripToDriver(30L, 77L));
         assertTrue(ex.getMessage().contains("ACTIVE"));
-        verify(asyncNotifier, never()).pushDriverAsync(any(), any(), any(), any());
-        verify(asyncNotifier, never()).notifyDriverAsync(any(), any());
+        verifyNoInteractions(notificationHelper);
     }
 }

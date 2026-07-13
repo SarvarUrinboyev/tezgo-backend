@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -70,6 +71,7 @@ class CooldownTest {
         driver.setCarModel("Cobalt");
         driver.setCarNumber("01A777AA");
         lenient().when(driverRepository.findByUserId(100L)).thenReturn(Optional.of(driver));
+        lenient().when(notificationHelper.liveOfferTripIdsForDriver(5L)).thenReturn(Set.of(1L, 2L, 3L));
     }
 
     @Test

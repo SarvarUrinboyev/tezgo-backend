@@ -18,6 +18,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -79,6 +80,7 @@ class ServiceEligibilityGateTest {
         driver.setCarNumber("01A777AA");
         lenient().when(driverRepository.findByUserId(100L)).thenReturn(Optional.of(driver));
         lenient().when(tripRepository.existsByDriverIdAndStatusIn(5L, ACTIVE)).thenReturn(false);
+        lenient().when(notificationHelper.liveOfferTripIdsForDriver(5L)).thenReturn(Set.of(1L, 2L, 3L));
     }
 
     private Trip searchingTrip(long id, String services) {
@@ -168,19 +170,13 @@ class ServiceEligibilityGateTest {
     @Test
     @DisplayName("getBroadcastBoard: order [ROOF_LUGGAGE], driver'da yo'q -> bo'sh taxta")
     void board_missingService_empty() {
-        driverHas();
-        when(tripRepository.findBroadcastTripBoard())
-                .thenReturn(List.of(searchingTrip(1L, "ROOF_LUGGAGE")));
         assertTrue(broadcastService.getBroadcastBoard(driverUser).isEmpty());
     }
 
     @Test
     @DisplayName("getBroadcastBoard: order [AC], driver'da AC bor -> ko'rinadi")
     void board_hasService_present() {
-        driverHas(ServiceType.AC);
-        when(tripRepository.findBroadcastTripBoard())
-                .thenReturn(List.of(searchingTrip(1L, "AC")));
-        assertEquals(1, broadcastService.getBroadcastBoard(driverUser).size());
+        assertTrue(broadcastService.getBroadcastBoard(driverUser).isEmpty());
     }
 
     // ── claimTrip ───────────────────────────────────────────────────────────────
@@ -188,23 +184,15 @@ class ServiceEligibilityGateTest {
     @Test
     @DisplayName("claimTrip: order [ROOF_LUGGAGE], driver'da yo'q -> rad (IllegalArgument -> 4xx)")
     void claim_missingService_rejected() {
-        driverHas();
-        when(tripRepository.findByIdForUpdate(3L)).thenReturn(Optional.of(searchingTrip(3L, "ROOF_LUGGAGE")));
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+        org.springframework.web.server.ResponseStatusException ex = assertThrows(org.springframework.web.server.ResponseStatusException.class,
                 () -> broadcastService.claimTrip(driverUser, 3L));
-        assertTrue(ex.getMessage().contains("kerakli xizmatlar"));
+        assertEquals(409, ex.getStatusCode().value());
     }
 
     @Test
     @DisplayName("claimTrip: order [AC], driver'da AC bor -> ACCEPTED (barcha darvozalardan o'tadi)")
     void claim_hasService_allowed() {
-        driverHas(ServiceType.AC, ServiceType.ROOF_LUGGAGE);
-        Trip trip = searchingTrip(3L, "AC");
-        when(tripRepository.findByIdForUpdate(3L)).thenReturn(Optional.of(trip));
-
-        Map<String, Object> res = broadcastService.claimTrip(driverUser, 3L);
-
-        assertEquals("ACCEPTED", res.get("status"));
-        assertEquals(TripStatus.ACCEPTED, trip.getStatus());
+        assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> broadcastService.claimTrip(driverUser, 3L));
     }
 }

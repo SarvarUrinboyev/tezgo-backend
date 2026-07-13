@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,6 +47,7 @@ public class AdminService {
     private final TariffRepository tariffRepository;
     private final AsyncNotificationService asyncNotifier;
     private final PhotoService photoService;
+    private final TripNotificationHelper notificationHelper;
 
     public AdminService(DriverRepository driverRepository,
             DriverPhotoRepository driverPhotoRepository,
@@ -60,6 +62,26 @@ public class AdminService {
             TariffRepository tariffRepository,
             AsyncNotificationService asyncNotifier,
             PhotoService photoService) {
+        this(driverRepository, driverPhotoRepository, driverServiceRepository, tripRepository,
+                broadcastMessageRepository, userRepository, messagingTemplate, ratingRepository,
+                transactionRepository, chatService, tariffRepository, asyncNotifier, photoService, null);
+    }
+
+    @Autowired
+    public AdminService(DriverRepository driverRepository,
+            DriverPhotoRepository driverPhotoRepository,
+            DriverServiceRepository driverServiceRepository,
+            TripRepository tripRepository,
+            BroadcastMessageRepository broadcastMessageRepository,
+            UserRepository userRepository,
+            SimpMessagingTemplate messagingTemplate,
+            RatingRepository ratingRepository,
+            TransactionRepository transactionRepository,
+            ChatService chatService,
+            TariffRepository tariffRepository,
+            AsyncNotificationService asyncNotifier,
+            PhotoService photoService,
+            TripNotificationHelper notificationHelper) {
         this.driverRepository = driverRepository;
         this.driverPhotoRepository = driverPhotoRepository;
         this.driverServiceRepository = driverServiceRepository;
@@ -73,6 +95,7 @@ public class AdminService {
         this.tariffRepository = tariffRepository;
         this.asyncNotifier = asyncNotifier;
         this.photoService = photoService;
+        this.notificationHelper = notificationHelper;
     }
 
     /** Dashboard statistika */
@@ -442,6 +465,7 @@ public class AdminService {
         trip.setStatus(TripStatus.CANCELLED_BY_ADMIN);
         trip.setCancelReason(reason.trim());
         tripRepository.save(trip);
+        if (notificationHelper != null) notificationHelper.cancelOpenOffer(tripId);
 
         java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("tripId", tripId);
@@ -563,6 +587,24 @@ public class AdminService {
             throw new RuntimeException("Haydovchi ACTIVE emas (status=" + driver.getStatus().name() + ")");
         }
 
+        if (notificationHelper == null) {
+            throw new IllegalStateException("Sequential offer lifecycle is required for reassignment");
+        }
+        if (notificationHelper != null) {
+            com.taxi.backend.model.TripDriverOffer offer = notificationHelper
+                    .notifySpecificDriver(tripId, driverId)
+                    .orElseThrow(() -> new IllegalStateException("Haydovchi uchun taklif yaratilmadi"));
+            java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
+            result.put("tripId", tripId);
+            result.put("driverId", driverId);
+            result.put("driverCode", driver.getDriverCode());
+            result.put("driverName", driver.getUser() != null ? driver.getUser().getName() : null);
+            result.put("status", trip.getStatus().name());
+            result.put("offerExpiresAt", offer.getExpiresAt().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli());
+            result.put("message", "Buyurtma haydovchiga yuborildi");
+            return result;
+        }
+
         // Mavjud TripNotificationHelper.sendNewOrderNotification ichidagi payload bilan AYNAN bir xil
         // shaklda quramiz. Bu zarur — driver app'ning IncomingOrderModal'i va native TezgoMessagingService
         // ushbu maydonlarni kutadi. Mavjud helper'ga tegmaymiz (order-alert no-touch).
@@ -577,7 +619,7 @@ public class AdminService {
         wsMsg.put("toAddress", trip.getToAddress() != null ? trip.getToAddress() : "—");
         wsMsg.put("price", priceSom);
         wsMsg.put("offerExpiresAt", offerExpiresAt);
-        asyncNotifier.notifyDriverAsync(driverId, wsMsg);
+        log.error("[SEQUENTIAL_DISPATCH] disabled legacy reassign WebSocket branch reached for tripId={}", tripId);
 
         // FCM data-only push — app yopiq/fon/qulflangan holatda native FSI ochish
         Map<String, Object> pushData = new java.util.HashMap<>();
@@ -601,7 +643,7 @@ public class AdminService {
         pushData.put("offerExpiresAt", offerExpiresAt);
         // title/body null — data-only kafolatlanadi. PushNotificationService isOrder()=true
         // ekanini ichida tekshiradi va sof data-only payload yuboradi.
-        asyncNotifier.pushDriverAsync(driverId, null, null, pushData);
+        log.error("[SEQUENTIAL_DISPATCH] disabled legacy reassign push branch reached for tripId={}", tripId);
 
         java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("tripId", tripId);

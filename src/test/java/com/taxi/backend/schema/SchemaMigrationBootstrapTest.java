@@ -59,12 +59,20 @@ class SchemaMigrationBootstrapTest {
     private EntityManager em;
 
     @Test
-    void flywayChainAppliesFromScratch_throughV48() {
+    void flywayChainAppliesFromScratch_throughV49() {
         Object count = em.createNativeQuery(
-                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '48' AND success = true")
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '49' AND success = true")
                 .getSingleResult();
         assertEquals(1, ((Number) count).intValue(),
-                "V48 toza bazada muvaffaqiyatli qo'llanishi kerak (zanjir V1..V48 buzilmagan)");
+                "V49 toza bazada muvaffaqiyatli qo'llanishi kerak (zanjir V1..V49 buzilmagan)");
+    }
+
+    @Test
+    void v49AddsTheSingleLiveOfferDatabaseConstraint() {
+        assertEquals(1, ((Number) em.createNativeQuery(
+                "SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'uq_trip_driver_offers_one_live_per_trip' "
+                        + "AND indexdef LIKE '%PENDING_DELIVERY%ACKNOWLEDGED%'")
+                .getSingleResult()).intValue());
     }
 
     @Test

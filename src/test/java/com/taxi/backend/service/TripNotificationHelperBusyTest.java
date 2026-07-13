@@ -1,64 +1,69 @@
 package com.taxi.backend.service;
 
+import com.taxi.backend.enums.DriverStatus;
 import com.taxi.backend.enums.TripStatus;
+import com.taxi.backend.model.Driver;
 import com.taxi.backend.model.Trip;
+import com.taxi.backend.model.TripDriverOffer;
 import com.taxi.backend.repository.DriverRepository;
+import com.taxi.backend.repository.TripDriverOfferRepository;
 import com.taxi.backend.repository.TripRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
+import java.util.Optional;
 
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.when;
 
-/**
- * Commit 1 — matching push faol tripi bor (band) haydovchini o'tkazib yuboradi,
- * bo'sh haydovchiga esa yuboradi.
- */
 @ExtendWith(MockitoExtension.class)
 class TripNotificationHelperBusyTest {
-
-    @Mock private MatchingService matchingService;
-    @Mock private DriverRepository driverRepository;
-    @Mock private AsyncNotificationService asyncNotifier;
-    @Mock private TripRepository tripRepository;
-
-    private TripNotificationHelper helper;
-
-    @BeforeEach
-    void setup() {
-        helper = new TripNotificationHelper(matchingService, driverRepository, asyncNotifier, tripRepository);
-        ReflectionTestUtils.setField(helper, "matchingRadiusKm", 5.0);
-    }
+    @Mock private TripRepository trips;
+    @Mock private DriverRepository drivers;
+    @Mock private TripDriverOfferRepository offers;
+    @Mock private MatchingService matching;
+    @Mock private TripOfferDeliveryService delivery;
 
     @Test
-    @DisplayName("Band haydovchi (7) o'tkazib yuboriladi, bo'sh haydovchi (8) ga xabar yuboriladi")
-    void notifyNearbyDrivers_skipsBusyDriver() {
+    void busyRankOneIsSkippedAndOnlyNextEligibleDriverGetsOffer() {
         Trip trip = new Trip();
-        trip.setId(1L);
-        trip.setFromLat(41.30);
-        trip.setFromLon(69.60);
-        trip.setTotalPrice(1_000_000L);
+        trip.setId(1L); trip.setStatus(TripStatus.SEARCHING); trip.setTotalPrice(100L);
+        TripOfferLifecycleService lifecycle = new TripOfferLifecycleService(trips, drivers, offers, matching, delivery);
+        ReflectionTestUtils.setField(lifecycle, "matchingRadiusKm", 5.0d);
+        ReflectionTestUtils.setField(lifecycle, "offerTtlSeconds", 15L);
+        when(trips.findByIdForUpdate(1L)).thenReturn(Optional.of(trip));
+        when(offers.findLiveByTripIdForUpdate(anyLong(), any())).thenReturn(List.of());
+        when(offers.findAllOfferedDriverIdsByTripId(1L)).thenReturn(List.of());
+        when(offers.findMaxGenerationByTripId(1L)).thenReturn(0);
+        when(trips.findBusyDriverIds(TripStatus.ACTIVE_DRIVER_STATUSES)).thenReturn(List.of(7L));
+        when(matching.findNearbyDrivers(anyDouble(), anyDouble(), anyDouble(), anyBoolean())).thenReturn(List.of(
+                candidate(7L), candidate(8L)));
+        when(drivers.findById(8L)).thenReturn(Optional.of(driver(8L)));
+        when(drivers.findEnabledServiceTypesByDriverId(8L)).thenReturn(List.of());
+        when(offers.saveAndFlush(any(TripDriverOffer.class))).thenAnswer(i -> i.getArgument(0));
 
-        var busy = new MatchingService.MatchedDriver(7L, "Band", "Cobalt", "01A777AA",
-                41.30, 69.60, 1.0, 3.0, 5.0, "STANDART,DAMAS,BIZNES", null, 0.0, null);
-        var free = new MatchingService.MatchedDriver(8L, "Bo'sh", "Nexia", "01A888BB",
-                41.30, 69.60, 1.2, 4.0, 5.0, "STANDART,DAMAS,BIZNES", null, 0.0, null);
-        when(matchingService.findNearbyDrivers(anyDouble(), anyDouble(), anyDouble(), anyBoolean()))
-                .thenReturn(List.of(busy, free));
-        when(tripRepository.findBusyDriverIds(TripStatus.ACTIVE_DRIVER_STATUSES))
-                .thenReturn(List.of(7L)); // 7-haydovchi band
-        when(driverRepository.findByIsOnlineTrue()).thenReturn(List.of()); // fallback uchun bo'sh
+        lifecycle.dispatchNextOffer(1L);
 
-        helper.notifyNearbyDrivers(trip);
+        ArgumentCaptor<TripDriverOffer> offer = ArgumentCaptor.forClass(TripDriverOffer.class);
+        org.mockito.Mockito.verify(offers).saveAndFlush(offer.capture());
+        assertThat(offer.getValue().getDriver().getId()).isEqualTo(8L);
+    }
 
-        verify(asyncNotifier).notifyDriverAsync(eq(8L), anyMap());
-        verify(asyncNotifier, never()).notifyDriverAsync(eq(7L), anyMap());
+    private static MatchingService.MatchedDriver candidate(long id) {
+        return new MatchingService.MatchedDriver(id, "d", "Cobalt", "01A", 0, 0, 1, 2, 5,
+                "STANDART", null, 0, null);
+    }
+    private static Driver driver(long id) {
+        Driver d = new Driver(); d.setId(id); d.setStatus(DriverStatus.ACTIVE); d.setOnline(true);
+        d.setBalance(0L); d.setCarModel("Cobalt"); return d;
     }
 }

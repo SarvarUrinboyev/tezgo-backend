@@ -300,6 +300,7 @@ public class OperatorService {
         // ya'ni haydovchi JAZOLANMAYDI (operator bekor qildi, uning aybi emas).
         TripAssignmentUtil.clearDriverAssignment(trip);
         tripRepository.save(trip);
+        notificationHelper.cancelOpenOffer(tripId);
 
         log.info("[OPERATOR] Buyurtma #{} bekor qilindi (operator={}, freedDriver={}, waivedWaitingTiyin={})",
                 tripId, operator.getPhone(), freedDriverId, accruedWaiting);

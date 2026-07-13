@@ -79,6 +79,7 @@ class TripOrderAckTest {
         trip.setId(100L);
         trip.setStatus(TripStatus.SEARCHING);
         trip.setNotifiedDriverIds("5,6,22");   // driver 5 WAS notified
+        lenient().when(notificationHelper.acknowledgeCurrentOffer(100L, 5L)).thenReturn(true);
     }
 
     @Test
@@ -143,6 +144,7 @@ class TripOrderAckTest {
     @DisplayName("blank notifiedDriverIds -> rejected, no save (no order was dispatched to anyone)")
     void blankNotifiedIds_rejected() {
         trip.setNotifiedDriverIds(null);
+        when(notificationHelper.acknowledgeCurrentOffer(100L, 5L)).thenReturn(false);
         when(driverRepository.findByUserId(8L)).thenReturn(Optional.of(driver));
         when(tripRepository.findById(100L)).thenReturn(Optional.of(trip));
 

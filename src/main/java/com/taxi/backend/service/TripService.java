@@ -253,6 +253,7 @@ public class TripService {
                     .ifPresent(old -> {
                         old.setStatus(TripStatus.CANCELLED_BY_PASSENGER);
                         tripRepository.save(old);
+                        notificationHelper.cancelOpenOffer(old.getId());
                     });
 
             // Haydovchi allaqachon jalb etilgan bo'lsa — blok
@@ -414,6 +415,10 @@ public class TripService {
         if (!DriverServiceFilter.accepts(enabledServiceCodes(driver.getId()), trip.getSelectedServices()))
             throw new RuntimeException("Bu buyurtma uchun kerakli xizmatlar sizda yoqilmagan");
 
+        // A SEARCHING trip is not a public board item: only its current durable
+        // offer owner may accept it.
+        TripDriverOffer acceptedOffer = notificationHelper.requireCurrentOfferForAcceptance(tripId, driver.getId());
+
         trip.setDriver(driver);
         trip.setStatus(TripStatus.ACCEPTED);
         trip.setAcceptedAt(LocalDateTime.now());
@@ -428,6 +433,11 @@ public class TripService {
         }
 
         // Notification — async (DB tranzaksiyasidan keyin)
+        // Production helper either returns a locked owned offer or throws. The
+        // null branch only preserves isolated legacy unit fixtures that mock the
+        // helper without modelling dispatch ownership.
+        if (acceptedOffer != null) notificationHelper.markOfferAccepted(acceptedOffer.getId());
+
         asyncNotifier.notifyTripAsync(tripId,
                 Map.of("status", "ACCEPTED", "driverId", driver.getId(),
                         "driverName", driverUser.getName(), "driverPhone", driverUser.getPhone(),
@@ -462,6 +472,9 @@ public class TripService {
         driver.setOrderCooldownUntil(LocalDateTime.now().plusSeconds(declineCooldownSeconds));
         driverRepository.save(driver);
 
+        // This closes the current offer and creates at most one next offer.
+        notificationHelper.rejectCurrentOfferAndDispatchNext(tripId, driver.getId());
+
         return Map.of("status", trip.getStatus().name(), "tripId", tripId, "declined", true);
     }
 
@@ -486,7 +499,7 @@ public class TripService {
                 return Map.of("tripId", tripId, "acked", false);
             }
             // Faqat shu trip uchun XABARDOR QILINGAN haydovchi ACK yubora oladi (soxta ACK'lardan himoya).
-            if (!isDriverNotified(trip, driver.getId())) {
+            if (!notificationHelper.acknowledgeCurrentOffer(tripId, driver.getId())) {
                 return Map.of("tripId", tripId, "acked", false);
             }
             // Birinchi ACK g'olib — keyingilar no-op (idempotent).
@@ -500,16 +513,6 @@ public class TripService {
             log.warn("[ACK] markOrderReceived xato (trip={}): {}", tripId, e.getMessage());
             return Map.of("tripId", tripId, "acked", false);
         }
-    }
-
-    /** trip.notifiedDriverIds (CSV) ichida driverId bormi? */
-    private static boolean isDriverNotified(Trip trip, Long driverId) {
-        String csv = trip.getNotifiedDriverIds();
-        if (csv == null || csv.isBlank() || driverId == null) return false;
-        for (String part : csv.split(",")) {
-            if (part.trim().equals(String.valueOf(driverId))) return true;
-        }
-        return false;
     }
 
     /** Status almashtirish: ARRIVED → STARTED → COMPLETED */
@@ -718,6 +721,7 @@ public class TripService {
         boolean inCooldown = driver.isInCooldown();
 
         List<Trip> searchingTrips = tripRepository.findByStatusWithRelations(TripStatus.SEARCHING);
+        Set<Long> offeredTripIds = notificationHelper.liveOfferTripIdsForDriver(driver.getId());
 
         // Haydovchi joylashuviga qarab filtrlash — faqat radius ichidagi buyurtmalar
         Double driverLat = driver.getLatitude();
@@ -737,6 +741,9 @@ public class TripService {
         java.util.Set<String> enabledServices = enabledServiceCodes(driver.getId());
 
         return searchingTrips.stream()
+                // Polling is a view of this driver's current offer, never a
+                // general board of actionable SEARCHING trips.
+                .filter(t -> offeredTripIds.contains(t.getId()))
                 // Cooldown'da FAQAT operator/CALL buyurtmalar o'tadi — matching bypass bilan AYNAN bir xil shart
                 // (TripNotificationHelper:60 — source != null && source.startsWith("CALL"), CALL + CALL_TAXOMETER).
                 .filter(t -> !inCooldown || (t.getSource() != null && t.getSource().startsWith("CALL")))
@@ -899,6 +906,7 @@ public class TripService {
         trip.setStatus(TripStatus.CANCELLED_BY_PASSENGER);
         if (reason != null && !reason.isBlank()) trip.setCancelReason(reason);
         tripRepository.save(trip);
+        notificationHelper.cancelOpenOffer(tripId);
 
         // Haydovchiga xabar berish
         if (trip.getDriver() != null) {
