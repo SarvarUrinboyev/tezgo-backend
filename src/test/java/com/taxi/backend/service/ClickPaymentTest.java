@@ -55,7 +55,8 @@ class ClickPaymentTest {
 
     private PaymentService service;
 
-    private static final String SERVICE_ID = "svc123";
+    /** Production Click Merchant service ID; keep the proven driver-app flow pinned to it. */
+    private static final String SERVICE_ID = "105926";
     private static final String SECRET = "secretXYZ";
     private static final long DRIVER_ID = 7L;
     private static final long ORDER_TIYIN = 100_000L; // 1000 so'm
@@ -170,6 +171,19 @@ class ClickPaymentTest {
         assertEquals(DRIVER_ID, captured.getValue().getDriverId());
         assertEquals(ORDER_TIYIN, captured.getValue().getAmount());
         assertEquals("CREATED", captured.getValue().getStatus());
+    }
+
+    @Test
+    void createOrder_keepsTheProvenService105926PaymentLinkContract() throws Exception {
+        Map<String, Object> created = service.createOrder(DRIVER_ID, ORDER_TIYIN);
+        String orderReference = (String) created.get("orderId");
+
+        assertEquals(1_000L, created.get("amountUzs"));
+        assertEquals(
+                "https://my.click.uz/services/pay?service_id=105926&merchant_id=m123&amount=1000"
+                        + "&transaction_param=" + orderReference
+                        + "&return_url=tezyol://payment-result",
+                created.get("clickUrl"));
     }
 
     @Test
