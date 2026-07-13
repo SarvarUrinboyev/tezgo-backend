@@ -1,6 +1,8 @@
 package com.taxi.backend.schema;
 
 import com.taxi.backend.model.SystemSetting;
+import com.taxi.backend.model.OperatorTripIdempotency;
+import jakarta.persistence.Column;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,6 +75,23 @@ class SchemaMigrationBootstrapTest {
         assertEquals(1, ((Number) em.createNativeQuery(
                 "SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'uq_trips_one_active_immediate_trip_per_passenger' "
                         + "AND indexdef LIKE '%scheduled_at IS NULL%'")
+                .getSingleResult()).intValue());
+    }
+
+    @Test
+    void v47RequestHashColumnAndEntityMappingRemainAligned() throws NoSuchFieldException {
+        Column mapping = OperatorTripIdempotency.class.getDeclaredField("requestHash")
+                .getAnnotation(Column.class);
+
+        assertNotNull(mapping);
+        assertEquals("CHAR(64)", mapping.columnDefinition());
+        assertEquals("character", em.createNativeQuery(
+                "SELECT data_type FROM information_schema.columns "
+                        + "WHERE table_name = 'operator_trip_idempotencies' AND column_name = 'request_hash'")
+                .getSingleResult());
+        assertEquals(64, ((Number) em.createNativeQuery(
+                "SELECT character_maximum_length FROM information_schema.columns "
+                        + "WHERE table_name = 'operator_trip_idempotencies' AND column_name = 'request_hash'")
                 .getSingleResult()).intValue());
     }
 

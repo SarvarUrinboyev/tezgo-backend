@@ -28,7 +28,8 @@ public class OperatorTripIdempotency {
     @Column(name = "idempotency_key", nullable = false, length = 36)
     private String idempotencyKey;
 
-    @Column(name = "request_hash", nullable = false, length = 64)
+    /** SHA-256 digest; V47 intentionally persists it as fixed-width CHAR(64). */
+    @Column(name = "request_hash", nullable = false, length = 64, columnDefinition = "CHAR(64)")
     private String requestHash;
 
     @Column(nullable = false, length = 20)
