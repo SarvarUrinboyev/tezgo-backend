@@ -70,6 +70,10 @@ public interface TripRepository extends JpaRepository<Trip, Long> {
 
     Optional<Trip> findFirstByPassengerIdAndStatusIn(Long passengerId, List<TripStatus> statuses);
 
+    /** Immediate-trip invariant: scheduled work must not block a new immediate call. */
+    Optional<Trip> findFirstByPassengerIdAndScheduledAtIsNullAndStatusIn(
+            Long passengerId, List<TripStatus> statuses);
+
     /** Yo'lovchining jami triplar soni */
     long countByPassengerId(Long passengerId);
 

@@ -4,6 +4,7 @@ import com.taxi.backend.dto.OperatorTripRequest;
 import com.taxi.backend.enums.Role;
 import com.taxi.backend.enums.ServiceType;
 import com.taxi.backend.enums.TripStatus;
+import com.taxi.backend.exception.ConflictException;
 import com.taxi.backend.model.Tariff;
 import com.taxi.backend.model.Trip;
 import com.taxi.backend.model.User;
@@ -15,6 +16,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -50,6 +53,9 @@ public class OperatorService {
     private final SecurityMonitorService securityMonitor;
     private final com.taxi.backend.pricing.NightFareService nightFareService;
 
+    private static final List<TripStatus> ACTIVE_IMMEDIATE_PASSENGER_STATUSES = List.of(
+            TripStatus.SEARCHING, TripStatus.ACCEPTED, TripStatus.DRIVER_ARRIVED, TripStatus.STARTED);
+
     public OperatorService(TripRepository tripRepository,
                            UserRepository userRepository,
                            TariffRepository tariffRepository,
@@ -84,6 +90,11 @@ public class OperatorService {
                     newUser.setRole(Role.PASSENGER);
                     return userRepository.save(newUser);
                 });
+
+        // Passenger oqimi ham ayni biznes qoidaga tayanadi: rejalashtirilmagan
+        // safar uchun bir vaqtning o'zida faqat bitta faol trip bo'lishi mumkin.
+        // V47 partial unique index esa ikki operator race'ida yakuniy DB kafolatidir.
+        ensureNoActiveImmediateTrip(passenger);
 
         // 2. Tarif (default: birinchi aktiv tarif = EKONOM)
         Tariff tariff;
@@ -137,7 +148,7 @@ public class OperatorService {
             log.info("[OPERATOR] Taxometr buyurtma #{} yaratildi: {} (operator={}, mijoz={})",
                     saved.getId(), req.getPickupAddress(), operator.getPhone(), req.getPassengerPhone());
 
-            notificationHelper.notifyNearbyDrivers(saved);
+            scheduleDispatchAfterCommit(saved);
             securityMonitor.trackTripCreation(operator.getId());
 
             Map<String, Object> result = new HashMap<>();
@@ -198,7 +209,7 @@ public class OperatorService {
                 operator.getPhone(), req.getPassengerPhone());
 
         // 7. Haydovchilarga notification (async)
-        notificationHelper.notifyNearbyDrivers(saved);
+        scheduleDispatchAfterCommit(saved);
 
         // 8. Anomaliya tracking
         securityMonitor.trackTripCreation(operator.getId());
@@ -222,6 +233,43 @@ public class OperatorService {
         result.put("surgeMultiplier", surge.multiplier());
         result.put("tariffName", tariff.getName());
         return result;
+    }
+
+    private void ensureNoActiveImmediateTrip(User passenger) {
+        tripRepository.findFirstByPassengerIdAndScheduledAtIsNullAndStatusIn(
+                        passenger.getId(), ACTIVE_IMMEDIATE_PASSENGER_STATUSES)
+                .ifPresent(existing -> {
+                    throw new ConflictException("Bu mijozda faol buyurtma mavjud");
+                });
+    }
+
+    /**
+     * External driver dispatch must occur only after the trip transaction commits.
+     * A retry returning an idempotency replay never calls this method.
+     */
+    private void scheduleDispatchAfterCommit(Trip trip) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()
+                && TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    dispatchCommittedTrip(trip);
+                }
+            });
+            return;
+        }
+        // Direct service tests and non-Spring callers retain existing behavior.
+        dispatchCommittedTrip(trip);
+    }
+
+    private void dispatchCommittedTrip(Trip trip) {
+        try {
+            notificationHelper.notifyNearbyDrivers(trip);
+        } catch (Exception exception) {
+            // The committed trip remains durable; this preserves no-duplicate replay
+            // semantics while surfacing a delivery failure to normal operations logs.
+            log.error("[OPERATOR_DISPATCH] committed tripId={} dispatch failed", trip.getId(), exception);
+        }
     }
 
     /** Operator buyurtmani bekor qiladi — CALL manbali, terminal BO'LMAGAN har qanday holatda
