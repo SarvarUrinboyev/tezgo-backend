@@ -183,17 +183,19 @@ public class TaxometerService {
         trip.setCompletedAt(LocalDateTime.now());
         tripRepository.save(trip);
 
-        driverRepository.addToBalance(driver.getId(), -commissionTiyin);
-        driverRepository.flush();
-        Driver updated = driverRepository.findById(driver.getId()).orElse(driver);
-        long balanceAfter = updated.getBalance();
+        Driver walletDriver = driverRepository.findByIdForUpdate(driver.getId())
+                .orElseThrow(() -> new IllegalStateException("Taxometer driver not found"));
+        if (walletDriver.getBalance() == null) throw new IllegalStateException("Taxometer driver balance is null");
+        long balanceBefore = walletDriver.getBalance();
+        long balanceAfter = Math.subtractExact(balanceBefore, commissionTiyin);
+        walletDriver.setBalance(balanceAfter);
 
         Transaction tx = new Transaction();
-        tx.setDriver(driver);
+        tx.setDriver(walletDriver);
         tx.setTrip(trip);
         tx.setType(TransactionType.TAXOMETER_COMMISSION);
         tx.setAmount(-commissionTiyin);
-        tx.setBalanceBefore(balanceAfter + commissionTiyin);
+        tx.setBalanceBefore(balanceBefore);
         tx.setBalanceAfter(balanceAfter);
         tx.setDescription("Taxometr komissiya: " + distanceKm + " km");
         transactionRepository.save(tx);

@@ -98,7 +98,7 @@ class ClickPaymentTest {
         User u = new User(); u.setId(DRIVER_ID + 100); d.setUser(u);
         d.setBalance(0L);
         when(driverRepository.findById(DRIVER_ID)).thenReturn(Optional.of(d));
-        when(driverRepository.addToBalance(eq(DRIVER_ID), anyLong())).thenReturn(1);
+        when(driverRepository.findByIdForUpdate(DRIVER_ID)).thenReturn(Optional.of(d));
         when(transactionRepository.save(any(Transaction.class))).thenAnswer(i -> i.getArgument(0));
     }
 
@@ -298,7 +298,7 @@ class ClickPaymentTest {
         assertEquals(0, res.get("error"));
         assertEquals(orderId, res.get("merchant_confirm_id"));
         // Aynan bir marta kreditlandi (1000 so'm = 100000 tiyin)
-        verify(driverRepository, times(1)).addToBalance(DRIVER_ID, ORDER_TIYIN);
+        verify(driverRepository, times(1)).findByIdForUpdate(DRIVER_ID);
         verify(transactionRepository, times(1)).save(any(Transaction.class));
     }
 
@@ -306,7 +306,7 @@ class ClickPaymentTest {
     void complete_tamperedSign_rejected_noCredit() throws Exception {
         Map<String, Object> res = service.handleClickComplete(completeParams("CT-2", "1000", false));
         assertEquals(-1, res.get("error"));
-        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepository, never()).findByIdForUpdate(anyLong());
         verify(transactionRepository, never()).save(any());
     }
 
@@ -319,7 +319,7 @@ class ClickPaymentTest {
 
         assertEquals(-8, res.get("error"));
         verify(clickTxRepository, never()).markConfirmedIfPrepared(anyString(), anyString(), anyString());
-        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepository, never()).findByIdForUpdate(anyLong());
     }
 
     @Test
@@ -331,7 +331,7 @@ class ClickPaymentTest {
 
         assertEquals(-3, res.get("error"));
         verify(clickTxRepository, never()).markConfirmedIfPrepared(anyString(), anyString(), anyString());
-        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepository, never()).findByIdForUpdate(anyLong());
     }
 
     @Test
@@ -343,7 +343,7 @@ class ClickPaymentTest {
 
         assertEquals(-8, res.get("error"));
         verify(clickTxRepository, never()).markConfirmedIfPrepared(anyString(), anyString(), anyString());
-        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepository, never()).findByIdForUpdate(anyLong());
     }
 
     @Test
@@ -353,7 +353,7 @@ class ClickPaymentTest {
         Map<String, Object> res = service.handleClickComplete(completeParams("CT-NO-PREPARE", "1000", true));
 
         assertEquals(-6, res.get("error"));
-        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepository, never()).findByIdForUpdate(anyLong());
         verify(transactionRepository, never()).save(any());
     }
 
@@ -373,7 +373,7 @@ class ClickPaymentTest {
         Map<String, Object> res = service.handleClickComplete(p);
 
         assertEquals(-6, res.get("error"));
-        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepository, never()).findByIdForUpdate(anyLong());
         verify(transactionRepository, never()).save(any());
     }
 
@@ -387,7 +387,7 @@ class ClickPaymentTest {
 
         assertEquals(-9, res.get("error"));
         verify(clickTxRepository).markCancelled("CT-FAILED", -501);
-        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepository, never()).findByIdForUpdate(anyLong());
     }
 
     @Test
@@ -400,7 +400,7 @@ class ClickPaymentTest {
 
         assertEquals(-9, res.get("error"));
         verify(clickTxRepository).markCancelled("CT-FAILED-POSITIVE", 1);
-        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepository, never()).findByIdForUpdate(anyLong());
     }
 
     // ─────────────────────────────────────────────
@@ -422,7 +422,7 @@ class ClickPaymentTest {
         assertEquals(0, r1.get("error"));
         assertEquals(-4, r2.get("error"));
         // BALANS FAQAT BIR MARTA kreditlandi — double-credit YO'Q
-        verify(driverRepository, times(1)).addToBalance(DRIVER_ID, ORDER_TIYIN);
+        verify(driverRepository, times(1)).findByIdForUpdate(DRIVER_ID);
         verify(transactionRepository, times(1)).save(any(Transaction.class));
     }
 
@@ -446,7 +446,7 @@ class ClickPaymentTest {
 
         assertEquals(0, r1.get("error"));
         assertEquals(-4, r2.get("error"));
-        verify(driverRepository, times(1)).addToBalance(DRIVER_ID, ORDER_TIYIN); // aynan bir marta
+        verify(driverRepository, times(1)).findByIdForUpdate(DRIVER_ID); // aynan bir marta
     }
 
     // ─────────────────────────────────────────────
@@ -460,7 +460,7 @@ class ClickPaymentTest {
         // Order 1000 so'm, lekin Click 2000 so'm da'vo qilmoqda (imzo 2000 ustidan to'g'ri)
         Map<String, Object> res = service.handleClickComplete(completeParams("CT-AMT", "2000", true));
         assertEquals(-2, res.get("error"));
-        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepository, never()).findByIdForUpdate(anyLong());
     }
 
     @Test
@@ -470,7 +470,7 @@ class ClickPaymentTest {
         Map<String, Object> res = service.handleClickComplete(completeParams("CT-SCALE", "1000.001", true));
 
         assertEquals(-2, res.get("error"));
-        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepository, never()).findByIdForUpdate(anyLong());
     }
 
     @Test
@@ -483,7 +483,7 @@ class ClickPaymentTest {
         Map<String, Object> res = service.handleClickComplete(p);
 
         assertEquals(0, res.get("error"));
-        verify(driverRepository).addToBalance(DRIVER_ID, ORDER_TIYIN);
+        verify(driverRepository).findByIdForUpdate(DRIVER_ID);
     }
 
     @Test
@@ -507,6 +507,6 @@ class ClickPaymentTest {
 
         Map<String, Object> res = service.handleClickComplete(p);
         assertEquals(-5, res.get("error"));
-        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepository, never()).findByIdForUpdate(anyLong());
     }
 }

@@ -63,6 +63,7 @@ class StatusTransitionGuardTest {
         driver.setId(5L);
         driver.setBalance(200_000L);
         lenient().when(driverRepository.findByUserId(100L)).thenReturn(Optional.of(driver));
+        lenient().when(driverRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(driver));
     }
 
     private Trip tripWith(TripStatus status) {
@@ -91,7 +92,7 @@ class StatusTransitionGuardTest {
 
         assertEquals("COMPLETED", res.get("status"));
         assertEquals(TripStatus.COMPLETED, trip.getStatus());
-        verify(driverRepository, times(1)).addToBalance(5L, -10_000L);
+        verify(driverRepository, times(1)).findByIdForUpdate(5L);
     }
 
     @Test
@@ -105,7 +106,7 @@ class StatusTransitionGuardTest {
         Map<String, Object> res = tripService.updateTripStatus(driverUser, 1L, TripStatus.COMPLETED);
 
         assertEquals("COMPLETED", res.get("status"));
-        verify(driverRepository, times(1)).addToBalance(5L, -10_000L);
+        verify(driverRepository, times(1)).findByIdForUpdate(5L);
     }
 
     // ── Re-completion / terminal rad etish ─────────────────────────────────────
@@ -120,7 +121,7 @@ class StatusTransitionGuardTest {
                 () -> tripService.updateTripStatus(driverUser, 1L, TripStatus.COMPLETED));
         assertTrue(ex.getMessage().contains("allaqachon yakunlangan"));
         assertEquals(TripStatus.COMPLETED, trip.getStatus());
-        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepository, never()).findByIdForUpdate(anyLong());
     }
 
     @Test
@@ -133,7 +134,7 @@ class StatusTransitionGuardTest {
                 () -> tripService.updateTripStatus(driverUser, 1L, TripStatus.DRIVER_ARRIVED));
         assertTrue(ex.getMessage().contains("allaqachon yakunlangan"));
         assertEquals(TripStatus.COMPLETED, trip.getStatus());
-        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepository, never()).findByIdForUpdate(anyLong());
     }
 
     @Test
@@ -145,7 +146,7 @@ class StatusTransitionGuardTest {
         RuntimeException ex = assertThrows(RuntimeException.class,
                 () -> tripService.updateTripStatus(driverUser, 1L, TripStatus.STARTED));
         assertTrue(ex.getMessage().contains("allaqachon yakunlangan"));
-        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepository, never()).findByIdForUpdate(anyLong());
     }
 
     // ── Teskari (backward) o'tish rad etish ────────────────────────────────────
@@ -160,6 +161,6 @@ class StatusTransitionGuardTest {
                 () -> tripService.updateTripStatus(driverUser, 1L, TripStatus.DRIVER_ARRIVED));
         assertTrue(ex.getMessage().contains("tartibda o'zgartirib bo'lmaydi"));
         assertEquals(TripStatus.STARTED, trip.getStatus());
-        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepository, never()).findByIdForUpdate(anyLong());
     }
 }

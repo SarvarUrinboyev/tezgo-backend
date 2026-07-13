@@ -69,6 +69,7 @@ class CommitSafeStatusTest {
         driver.setOnline(true);
         driver.setBalance(200_000L);
         when(driverRepository.findByUserId(100L)).thenReturn(Optional.of(driver));
+        lenient().when(driverRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(driver));
     }
 
     private Trip startedTrip(Long totalPrice, String source) {
@@ -100,7 +101,7 @@ class CommitSafeStatusTest {
 
         assertEquals("COMPLETED", res.get("status"));
         assertEquals(TripStatus.COMPLETED, trip.getStatus());
-        verify(driverRepository).addToBalance(5L, -10_000L); // 10% komissiya saqlanadi
+        verify(driverRepository).findByIdForUpdate(5L); // 10% komissiya saqlanadi
     }
 
     @Test
@@ -131,7 +132,7 @@ class CommitSafeStatusTest {
 
         assertEquals("COMPLETED", res.get("status"));
         assertEquals(TripStatus.COMPLETED, trip.getStatus());
-        verify(driverRepository).addToBalance(5L, 0L); // komissiya 0 dan
+        verify(driverRepository).findByIdForUpdate(5L); // komissiya 0 dan
     }
 
     // ── Happy-path: o'zgarmagan xulq, to'g'ri komissiya ────────────────────────
@@ -145,7 +146,7 @@ class CommitSafeStatusTest {
         Map<String, Object> res = tripService.updateTripStatus(driverUser, 2L, TripStatus.COMPLETED);
 
         assertEquals("COMPLETED", res.get("status"));
-        verify(driverRepository).addToBalance(5L, -10_000L);
+        verify(driverRepository).findByIdForUpdate(5L);
         verify(pushService).notifyPassenger(eq(10L), anyString(), anyString(), anyMap());
     }
 

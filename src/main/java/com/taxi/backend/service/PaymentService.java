@@ -589,32 +589,34 @@ public class PaymentService {
     // BALANCE CREDITING
     // ─────────────────────────────────────────────
 
-    /** Atomic balance credit — race condition himoyasi */
+    /**
+     * Credits a driver and writes the TOPUP snapshot under one database row lock.
+     * This joins the caller transaction, so a failed Click claim, balance update,
+     * or ledger insert rolls the entire Complete callback back together.
+     */
     @Transactional
     public void creditDriverBalance(Long driverId, Long amount, String description) {
-        Driver driver = driverRepository.findById(driverId)
+        if (driverId == null || amount == null || amount <= 0) {
+            throw new IllegalArgumentException("Click payment amount must be positive");
+        }
+        Driver driver = driverRepository.findByIdForUpdate(driverId)
                 .orElseThrow(() -> new IllegalStateException("Click payment driver not found"));
-            // Atomic DB update — concurrent callback'lar xavfsiz
-            if (driverRepository.addToBalance(driver.getId(), amount) != 1) {
-                throw new IllegalStateException("Click payment balance update failed");
-            }
+        if (driver.getBalance() == null) {
+            throw new IllegalStateException("Click payment driver balance is null");
+        }
+        long balanceBefore = driver.getBalance();
+        long balanceAfter = Math.addExact(balanceBefore, amount);
+        driver.setBalance(balanceAfter);
 
-            // Atomik update'dan keyin yangilangan balansni o'qish
-            driverRepository.flush();
-            Driver updated = driverRepository.findById(driverId)
-                    .orElseThrow(() -> new IllegalStateException("Click payment driver disappeared"));
-            long balanceAfter = updated.getBalance();
-            long balanceBefore = balanceAfter - amount;
-
-            Transaction tx = new Transaction();
-            tx.setDriver(driver);
-            tx.setType(TransactionType.TOPUP);
-            tx.setAmount(amount);
-            tx.setBalanceBefore(balanceBefore);
-            tx.setBalanceAfter(balanceAfter);
-            tx.setDescription(description);
-            transactionRepository.save(tx);
-            log.info("Balance credited: driverId=" + driverId + " +" + amount + " tiyin");
+        Transaction tx = new Transaction();
+        tx.setDriver(driver);
+        tx.setType(TransactionType.TOPUP);
+        tx.setAmount(amount);
+        tx.setBalanceBefore(balanceBefore);
+        tx.setBalanceAfter(balanceAfter);
+        tx.setDescription(description);
+        transactionRepository.save(tx);
+        log.info("Balance credited: driverId=" + driverId + " +" + amount + " tiyin");
     }
 
     // ─────────────────────────────────────────────

@@ -94,7 +94,7 @@ class TaxometerLifecycleNightTest {
         when(driverRepository.findByUserId(7L)).thenReturn(Optional.of(driver));
         when(tripRepository.findById(50L)).thenReturn(Optional.of(trip));
         when(tariffRepository.findByName("STANDART")).thenReturn(Optional.of(ekonom()));
-        when(driverRepository.findById(3L)).thenReturn(Optional.of(driver));
+        when(driverRepository.findByIdForUpdate(3L)).thenReturn(Optional.of(driver));
         Map<String, Object> r = taxo.finish(user, 50L, 41.31, 69.69, 4.0);
         return ((Number) r.get("fareUzs")).longValue();
     }

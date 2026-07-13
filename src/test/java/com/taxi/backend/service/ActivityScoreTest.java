@@ -63,6 +63,7 @@ class ActivityScoreTest {
         driver.setTotalTrips(0);
         driver.setActivityScore(0.0);
         lenient().when(driverRepository.findByUserId(100L)).thenReturn(Optional.of(driver));
+        lenient().when(driverRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(driver));
     }
 
     private Trip tripWithDriver(TripStatus status) {

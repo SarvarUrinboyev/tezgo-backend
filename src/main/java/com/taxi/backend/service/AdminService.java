@@ -790,18 +790,25 @@ public class AdminService {
     @Transactional
     public Map<String, Object> adminTopupBalance(Long driverId, Long amountUzs, String paymentMethod) {
         if (amountUzs == null || amountUzs <= 0) throw new RuntimeException("Miqdor musbat bo'lishi kerak");
-        Driver driver = driverRepository.findById(driverId)
+        long amountTiyin;
+        try {
+            amountTiyin = Math.multiplyExact(amountUzs, 100L);
+        } catch (ArithmeticException exception) {
+            throw new RuntimeException("Miqdor juda katta", exception);
+        }
+        Driver driver = driverRepository.findByIdForUpdate(driverId)
                 .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
-        long amountTiyin = amountUzs * 100;
+        if (driver.getBalance() == null) throw new IllegalStateException("Haydovchi balansi topilmadi");
         long before = driver.getBalance();
-        driverRepository.addToBalance(driverId, amountTiyin);
+        long after = Math.addExact(before, amountTiyin);
+        driver.setBalance(after);
 
         Transaction tx = new Transaction();
         tx.setDriver(driver);
         tx.setType(TransactionType.TOPUP);
         tx.setAmount(amountTiyin);
         tx.setBalanceBefore(before);
-        tx.setBalanceAfter(before + amountTiyin);
+        tx.setBalanceAfter(after);
         tx.setDescription("Admin tomonidan to'ldirildi");
         tx.setPaymentMethod(paymentMethod);
         transactionRepository.save(tx);
@@ -810,7 +817,7 @@ public class AdminService {
                 "driverId", driverId,
                 "driverCode", driver.getDriverCode() != null ? driver.getDriverCode() : "",
                 "addedUzs", amountUzs,
-                "newBalanceUzs", (before + amountTiyin) / 100,
+                "newBalanceUzs", after / 100,
                 "message", "Balans muvaffaqiyatli to'ldirildi"
         );
     }

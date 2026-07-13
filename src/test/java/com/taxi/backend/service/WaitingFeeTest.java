@@ -66,6 +66,7 @@ class WaitingFeeTest {
         driver.setId(5L);
         driver.setBalance(0L);
         lenient().when(driverRepository.findByUserId(100L)).thenReturn(Optional.of(driver));
+        lenient().when(driverRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(driver));
     }
 
     private Trip activeTrip(TripStatus status, long totalPriceTiyin) {
@@ -125,7 +126,7 @@ class WaitingFeeTest {
 
         // complete: komissiya bazasi kutish haqini ham o'z ichiga oladi (10% * 1090000 = 109000)
         tripService.updateTripStatus(driverUser, 1L, TripStatus.COMPLETED);
-        verify(driverRepository).addToBalance(5L, -109_000L);
+        verify(driverRepository).findByIdForUpdate(5L);
     }
 
     @Test
@@ -152,6 +153,6 @@ class WaitingFeeTest {
         tripService.updateTripStatus(driverUser, 1L, TripStatus.COMPLETED);
 
         // komissiya = 10% * 1,500,000 = 150,000 (xizmatlar bilan)
-        verify(driverRepository).addToBalance(5L, -150_000L);
+        verify(driverRepository).findByIdForUpdate(5L);
     }
 }

@@ -4,6 +4,8 @@ import com.taxi.backend.model.Driver;
 import com.taxi.backend.enums.DriverStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -48,10 +50,13 @@ public interface DriverRepository extends JpaRepository<Driver, Long> {
     @Query("SELECT d FROM Driver d JOIN FETCH d.user WHERE d.id IN :ids")
     List<Driver> findAllByIdsWithUser(@Param("ids") List<Long> ids);
 
-    // ── Atomic balance operations (race condition fix) ──
-    @Modifying
-    @Query("UPDATE Driver d SET d.balance = d.balance + :amount WHERE d.id = :driverId")
-    int addToBalance(@Param("driverId") Long driverId, @Param("amount") long amount);
+    /**
+     * Wallet mutation boundary: callers hold this PostgreSQL row lock until their
+     * surrounding transaction commits both the Driver update and its ledger row.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT d FROM Driver d WHERE d.id = :driverId")
+    Optional<Driver> findByIdForUpdate(@Param("driverId") Long driverId);
 
     @Modifying
     @Query("UPDATE Driver d SET d.balance = d.balance - :amount WHERE d.id = :driverId AND d.balance >= :amount")

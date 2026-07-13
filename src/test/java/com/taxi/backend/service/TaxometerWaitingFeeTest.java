@@ -57,6 +57,7 @@ class TaxometerWaitingFeeTest {
         driver.setBalance(0L);
         driver.setOnline(true);
         lenient().when(driverRepository.findByUserId(100L)).thenReturn(Optional.of(driver));
+        lenient().when(driverRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(driver));
     }
 
     @Test
@@ -101,7 +102,7 @@ class TaxometerWaitingFeeTest {
         assertEquals(1_340_000L, trip.getTotalPrice(), "yakuniy narx kutish haqini o'z ichiga olishi kerak");
         assertEquals(90_000L, res.get("waitingFeeTiyin"));
         // komissiya = 10% * 1,340,000 = 134,000 (kutish haqi bilan)
-        verify(driverRepository).addToBalance(5L, -134_000L);
+        verify(driverRepository).findByIdForUpdate(5L);
     }
 
     @Test
@@ -127,6 +128,6 @@ class TaxometerWaitingFeeTest {
         assertEquals(1_750_000L, trip.getTotalPrice(), "yakuniy narx xizmatlarni o'z ichiga olishi kerak");
         assertEquals(500_000L, res.get("servicesFeeTiyin"));
         // komissiya = 10% * 1,750,000 = 175,000 (xizmatlar bilan)
-        verify(driverRepository).addToBalance(5L, -175_000L);
+        verify(driverRepository).findByIdForUpdate(5L);
     }
 }

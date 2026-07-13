@@ -372,31 +372,29 @@ public class AdvancedShopService {
     // BALANCE CREDIT (replicated inline for isolation — see class javadoc)
     // ─────────────────────────────────────────────
 
-    /**
-     * Atomic balance credit + transactions ledger row.
-     * <p>REPLICATED from {@link PaymentService#creditDriverBalance} on purpose:
-     * keeps AdvancedShopService self-contained, so any future change to the Merchant API's
-     * credit path cannot accidentally affect ADVANCED SHOP and vice versa. The two flows
-     * each have their own copy of the same proven Decimal/tiyin handling.
-     */
+    /** Atomic balance credit and ledger row under the driver's PostgreSQL row lock. */
     @Transactional
     void creditDriverBalanceInline(Long driverId, Long amount, String description) {
-        driverRepository.findById(driverId).ifPresent(driver -> {
-            driverRepository.addToBalance(driver.getId(), amount);
-            driverRepository.flush();
-            Driver updated = driverRepository.findById(driverId).orElse(driver);
-            long balanceAfter = updated.getBalance();
-            long balanceBefore = balanceAfter - amount;
+        if (driverId == null || amount == null || amount <= 0) {
+            throw new IllegalArgumentException("Advanced Shop payment amount must be positive");
+        }
+        Driver driver = driverRepository.findByIdForUpdate(driverId)
+                .orElseThrow(() -> new IllegalStateException("Advanced Shop driver not found"));
+        if (driver.getBalance() == null) {
+            throw new IllegalStateException("Advanced Shop driver balance is null");
+        }
+        long balanceBefore = driver.getBalance();
+        long balanceAfter = Math.addExact(balanceBefore, amount);
+        driver.setBalance(balanceAfter);
 
-            Transaction tx = new Transaction();
-            tx.setDriver(driver);
-            tx.setType(TransactionType.TOPUP);
-            tx.setAmount(amount);
-            tx.setBalanceBefore(balanceBefore);
-            tx.setBalanceAfter(balanceAfter);
-            tx.setDescription(description);
-            transactionRepository.save(tx);
-        });
+        Transaction tx = new Transaction();
+        tx.setDriver(driver);
+        tx.setType(TransactionType.TOPUP);
+        tx.setAmount(amount);
+        tx.setBalanceBefore(balanceBefore);
+        tx.setBalanceAfter(balanceAfter);
+        tx.setDescription(description);
+        transactionRepository.save(tx);
     }
 
     // ─────────────────────────────────────────────

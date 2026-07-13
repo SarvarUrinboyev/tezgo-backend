@@ -123,8 +123,7 @@ class TripCompletionPushFlagTest {
         when(driverRepository.findByUserId(driverUser.getId())).thenReturn(Optional.of(driver));
         when(tripRepository.findById(trip.getId())).thenReturn(Optional.of(trip));
         // creditDriverBalance internals
-        when(driverRepository.findById(driver.getId())).thenReturn(Optional.of(driver));
-        // Stubbed but unused returns — addToBalance/flush are void.
+        when(driverRepository.findByIdForUpdate(driver.getId())).thenReturn(Optional.of(driver));
     }
 
     /**
@@ -141,7 +140,7 @@ class TripCompletionPushFlagTest {
         assertEquals(1, driver.getTotalTrips(), "totalTrips +1");
         assertEquals(2.0, driver.getActivityScore(), "activityScore +1.0");
         // Commission deducted + transaction logged
-        verify(driverRepository).addToBalance(eq(driver.getId()), anyLong());
+        verify(driverRepository).findByIdForUpdate(driver.getId());
         verify(transactionRepository).save(any());
         // Referral bonus attempted (passenger is set in the fixture)
         verify(referralService).rewardOnFirstTrip(passengerUser);

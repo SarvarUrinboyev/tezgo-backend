@@ -416,12 +416,7 @@ class AdvancedShopServiceTest {
     void complete_firstCallCreditsOnce() {
         Driver d = activeDriverWithCode(5L, "TZ-0005", "Aliyev Akmal");
         when(driverRepo.findByDriverCode("TZ-0005")).thenReturn(Optional.of(d));
-        when(driverRepo.findById(5L)).thenReturn(Optional.of(d));
-        when(driverRepo.addToBalance(eq(5L), anyLong())).thenAnswer(inv -> {
-            long amt = inv.getArgument(1);
-            d.setBalance(d.getBalance() + amt);
-            return 1;
-        });
+        when(driverRepo.findByIdForUpdate(5L)).thenReturn(Optional.of(d));
         when(ledger.insertIfAbsent(anyString(), anyString(), anyLong(), anyLong(), eq(2), any()))
                 .thenReturn(1);
         // Atomic claim: first call wins.
@@ -439,7 +434,7 @@ class AdvancedShopServiceTest {
         assertEquals(2, resp.get("status"));
         assertEquals("PAYDOC-1", resp.get("merchant_confirm_id"));
 
-        verify(driverRepo).addToBalance(5L, 100_000L);
+        verify(driverRepo).findByIdForUpdate(5L);
         verify(txRepo).save(any());
         assertEquals(100_000L, d.getBalance(), "balance must equal 1000 som in tiyin");
     }
@@ -465,7 +460,7 @@ class AdvancedShopServiceTest {
         assertEquals(2, resp.get("status"));
 
         // CRITICAL: balance must NOT change on duplicate Complete.
-        verify(driverRepo, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepo, never()).findByIdForUpdate(anyLong());
         verify(txRepo, never()).save(any());
     }
 
@@ -479,7 +474,7 @@ class AdvancedShopServiceTest {
 
         Map<String, Object> resp = service.dispatch(b);
         assertEquals(-1, resp.get("error"));
-        verify(driverRepo, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepo, never()).findByIdForUpdate(anyLong());
         verify(txRepo, never()).save(any());
     }
 
@@ -591,7 +586,7 @@ class AdvancedShopServiceTest {
         assertEquals(1, resp.get("status"), "status=1 (failed) so Click stops retrying");
 
         // CRITICAL: no balance credit, no transaction logged, no CONFIRMED ledger row.
-        verify(driverRepo, never()).addToBalance(anyLong(), anyLong());
+        verify(driverRepo, never()).findByIdForUpdate(anyLong());
         verify(txRepo, never()).save(any());
         verify(ledger, never()).markConfirmedIfNotAlready(anyString(), anyString());
         // markCancelled MAY have been called (safe — still no money moved).

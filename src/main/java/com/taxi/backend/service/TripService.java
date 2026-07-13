@@ -1256,19 +1256,17 @@ public class TripService {
         long totalPrice = totalPriceObj != null ? totalPriceObj : 0L;
         long commission = Math.round(totalPrice * commissionPercent / 100.0);
 
-        // Atomic DB update
-        driverRepository.addToBalance(driver.getId(), -commission);
-
-        // Atomik update'dan keyin yangilangan balansni o'qish (stale data himoyasi)
-        driverRepository.flush();
-        Driver updated = driverRepository.findById(driver.getId()).orElse(driver);
-        // Null-guard: balans null bo'lsa 0 deb olinadi (unboxing NPE'siz)
-        Long updatedBalance = updated.getBalance();
-        long balanceAfter = updatedBalance != null ? updatedBalance : 0L;
-        long balanceBefore = balanceAfter + commission;
+        Driver walletDriver = driverRepository.findByIdForUpdate(driver.getId())
+                .orElseThrow(() -> new IllegalStateException("Commission driver not found"));
+        if (walletDriver.getBalance() == null) {
+            throw new IllegalStateException("Commission driver balance is null");
+        }
+        long balanceBefore = walletDriver.getBalance();
+        long balanceAfter = Math.subtractExact(balanceBefore, commission);
+        walletDriver.setBalance(balanceAfter);
 
         Transaction tx = new Transaction();
-        tx.setDriver(driver);
+        tx.setDriver(walletDriver);
         tx.setTrip(trip);
         tx.setType(TransactionType.COMMISSION);
         tx.setAmount(commission);

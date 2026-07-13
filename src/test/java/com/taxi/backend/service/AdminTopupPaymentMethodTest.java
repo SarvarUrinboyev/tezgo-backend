@@ -46,8 +46,7 @@ class AdminTopupPaymentMethodTest {
     @Test
     void topupWithCash_storesPaymentMethodCash() {
         Driver d = stubDriver(1L);
-        when(driverRepository.findById(1L)).thenReturn(Optional.of(d));
-        when(driverRepository.addToBalance(anyLong(), anyLong())).thenReturn(1);
+        when(driverRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(d));
 
         ArgumentCaptor<Transaction> txCaptor = ArgumentCaptor.forClass(Transaction.class);
 
@@ -63,8 +62,7 @@ class AdminTopupPaymentMethodTest {
     @Test
     void topupWithCard_storesPaymentMethodCard() {
         Driver d = stubDriver(2L);
-        when(driverRepository.findById(2L)).thenReturn(Optional.of(d));
-        when(driverRepository.addToBalance(anyLong(), anyLong())).thenReturn(1);
+        when(driverRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(d));
 
         ArgumentCaptor<Transaction> txCaptor = ArgumentCaptor.forClass(Transaction.class);
 

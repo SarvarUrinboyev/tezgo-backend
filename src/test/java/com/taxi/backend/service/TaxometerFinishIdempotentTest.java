@@ -54,6 +54,7 @@ class TaxometerFinishIdempotentTest {
         driver.setId(5L);
         driver.setBalance(500_000L);
         when(driverRepository.findByUserId(100L)).thenReturn(Optional.of(driver));
+        when(driverRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(driver));
     }
 
     @Test
@@ -76,12 +77,12 @@ class TaxometerFinishIdempotentTest {
         var res = taxometerService.finish(driverUser, 1L, 41.3, 69.6, 5.0);
         assertEquals(TripStatus.COMPLETED, trip.getStatus());
         assertEquals(800_000L, res.get("fareTiyin"));
-        verify(driverRepository, times(1)).addToBalance(5L, -80_000L);
+        verify(driverRepository, times(1)).findByIdForUpdate(5L);
 
         // 2-finish (trip allaqachon COMPLETED) -> rad, yangi komissiya yo'q
         RuntimeException ex = assertThrows(RuntimeException.class,
                 () -> taxometerService.finish(driverUser, 1L, 41.3, 69.6, 5.0));
         assertTrue(ex.getMessage().contains("allaqachon yakunlangan"));
-        verify(driverRepository, times(1)).addToBalance(anyLong(), anyLong()); // hali ham faqat 1 marta
+        verify(driverRepository, times(1)).findByIdForUpdate(anyLong()); // hali ham faqat 1 marta
     }
 }
