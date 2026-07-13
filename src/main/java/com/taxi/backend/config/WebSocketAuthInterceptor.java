@@ -18,7 +18,10 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * WebSocket STOMP xabarlarini autentifikatsiya va avtorizatsiya qilish.
@@ -30,7 +33,15 @@ import java.util.logging.Logger;
 @Component
 public class WebSocketAuthInterceptor implements ChannelInterceptor {
 
-    private static final Logger log = Logger.getLogger(WebSocketAuthInterceptor.class.getName());
+    private static final Logger log = LoggerFactory.getLogger(WebSocketAuthInterceptor.class);
+
+    private static final Pattern CHAT_TOPIC = Pattern.compile("^/topic/chat/(\\d+)$");
+    private static final Pattern DRIVER_TOPIC = Pattern.compile("^/topic/driver/(\\d+)(?:/trip)?$");
+    private static final Pattern TRIP_TOPIC = Pattern.compile("^/topic/trip/(\\d+)$");
+    private static final Pattern DRIVER_LOCATION_TOPIC = Pattern.compile("^/topic/driver-location/(\\d+)$");
+    private static final Pattern TARGETED_BROADCAST_TOPIC = Pattern.compile("^/topic/broadcast/(\\d+)$");
+    private static final String GLOBAL_BROADCAST_TOPIC = "/topic/broadcast";
+    private static final String ADMIN_DRIVER_STATUS_TOPIC = "/topic/admin/driver-status";
 
     private final JwtService jwtService;
     private final UserRepository userRepository;
@@ -60,7 +71,12 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
 
         switch (command) {
             case CONNECT -> handleConnect(accessor);
-            case SUBSCRIBE -> handleSubscribe(accessor);
+            case SUBSCRIBE -> {
+                // Returning null rejects only this SUBSCRIBE frame. Existing, authorized
+                // subscriptions remain alive instead of turning one bad destination into
+                // a session-wide disconnect.
+                if (!handleSubscribe(accessor)) return null;
+            }
             case SEND -> handleSend(accessor);
             default -> { /* DISCONNECT va boshqalar — tekshiruvsiz */ }
         }
@@ -72,7 +88,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     private void handleConnect(StompHeaderAccessor accessor) {
         String authHeader = accessor.getFirstNativeHeader("Authorization");
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            log.warning("[WS] CONNECT — token yo'q");
+            log.warn("[WS_DENY] command=CONNECT reason=MISSING_BEARER_TOKEN");
             throw new SecurityException("WebSocket ulanish uchun token kerak");
         }
 
@@ -107,26 +123,58 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         accessor.setUser(auth);
     }
 
-    /** SUBSCRIBE — faqat o'z topic'lariga ruxsat */
-    private void handleSubscribe(StompHeaderAccessor accessor) {
+    /**
+     * SUBSCRIBE — explicit allowlist. Every destination not represented below is denied.
+     * The simple broker has no resource authorization of its own, so this boundary must
+     * make the complete decision before a subscription reaches it.
+     */
+    private boolean handleSubscribe(StompHeaderAccessor accessor) {
         String destination = accessor.getDestination();
-        if (destination == null) return;
+        User user = extractUser(accessor);
+        if (destination == null) return denySubscribe(accessor, null, "MISSING_DESTINATION");
+        if (user == null) return denySubscribe(accessor, destination, "UNAUTHENTICATED");
 
-        // /topic/chat/{tripId} — trip'ga tegishli foydalanuvchilar
-        if (destination.startsWith("/topic/chat/")) {
-            String tripIdStr = destination.replace("/topic/chat/", "");
-            try {
-                Long tripId = Long.parseLong(tripIdStr);
-                validateTripAccess(accessor, tripId);
-            } catch (NumberFormatException e) {
-                throw new SecurityException("Noto'g'ri trip ID");
-            }
+        Matcher matcher = CHAT_TOPIC.matcher(destination);
+        if (matcher.matches()) {
+            Long tripId = parsePositiveId(accessor, destination, matcher.group(1));
+            return tripId != null && allowTripParticipant(accessor, user, tripId, destination);
         }
 
-        // /topic/driver/{id}/* — faqat o'z driver topic'iga
-        if (destination.startsWith("/topic/driver/")) {
-            validateDriverTopicAccess(accessor, destination);
+        matcher = DRIVER_TOPIC.matcher(destination);
+        if (matcher.matches()) {
+            Long driverId = parsePositiveId(accessor, destination, matcher.group(1));
+            return driverId != null && allowOwnedDriverTopic(accessor, user, driverId, destination);
         }
+
+        matcher = TRIP_TOPIC.matcher(destination);
+        if (matcher.matches()) {
+            Long tripId = parsePositiveId(accessor, destination, matcher.group(1));
+            return tripId != null && allowTripParticipant(accessor, user, tripId, destination);
+        }
+
+        matcher = DRIVER_LOCATION_TOPIC.matcher(destination);
+        if (matcher.matches()) {
+            Long driverId = parsePositiveId(accessor, destination, matcher.group(1));
+            return driverId != null && allowDriverLocation(accessor, user, driverId, destination);
+        }
+
+        if (ADMIN_DRIVER_STATUS_TOPIC.equals(destination)) {
+            return isAdmin(accessor) || denySubscribe(accessor, destination, "ADMIN_REQUIRED");
+        }
+
+        if (GLOBAL_BROADCAST_TOPIC.equals(destination)) {
+            return allowAnyDriver(accessor, user, destination);
+        }
+
+        matcher = TARGETED_BROADCAST_TOPIC.matcher(destination);
+        if (matcher.matches()) {
+            Long driverId = parsePositiveId(accessor, destination, matcher.group(1));
+            return driverId != null && allowOwnedDriverTopic(accessor, user, driverId, destination);
+        }
+
+        String reason = destination.startsWith("/topic/") || destination.startsWith("/queue/")
+                ? "UNKNOWN_OR_MALFORMED_DESTINATION" : "UNSUPPORTED_DESTINATION";
+        return denySubscribe(accessor, destination, reason);
     }
 
     /** SEND — xabar yuborishda trip ownership tekshirish */
@@ -139,61 +187,97 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
             String tripIdStr = destination.replace("/app/chat.", "");
             try {
                 Long tripId = Long.parseLong(tripIdStr);
-                validateTripAccess(accessor, tripId);
+                if (tripId <= 0 || !canAccessTrip(accessor, extractUser(accessor), tripId)) {
+                    throw new SecurityException("Bu trip'ga kirishga ruxsat yo'q");
+                }
             } catch (NumberFormatException e) {
                 throw new SecurityException("Noto'g'ri trip ID");
             }
         }
     }
 
-    /** Trip'ga foydalanuvchining huquqi borligini tekshirish */
-    private void validateTripAccess(StompHeaderAccessor accessor, Long tripId) {
-        User user = extractUser(accessor);
-        if (user == null) {
-            throw new SecurityException("Autentifikatsiya kerak");
-        }
-
-        // Admin — barcha trip'larga ruxsat
-        if (isAdmin(accessor)) return;
-
-        // Trip mavjudligini tekshirish
-        tripRepository.findById(tripId).ifPresentOrElse(trip -> {
-            boolean isPassenger = trip.getPassenger() != null
-                && trip.getPassenger().getId().equals(user.getId());
-            boolean isDriver = trip.getDriver() != null
-                && trip.getDriver().getUser() != null
-                && trip.getDriver().getUser().getId().equals(user.getId());
-
-            if (!isPassenger && !isDriver) {
-                throw new SecurityException("Bu trip'ga kirishga ruxsat yo'q");
-            }
-        }, () -> {
-            throw new SecurityException("Trip topilmadi: " + tripId);
-        });
+    private boolean allowTripParticipant(StompHeaderAccessor accessor, User user, Long tripId, String destination) {
+        return canAccessTrip(accessor, user, tripId)
+                || denySubscribe(accessor, destination, "TRIP_PARTICIPANT_REQUIRED");
     }
 
-    /** Driver topic'iga faqat o'zi subscribe qila oladi */
-    private void validateDriverTopicAccess(StompHeaderAccessor accessor, String destination) {
-        User user = extractUser(accessor);
-        if (user == null) throw new SecurityException("Autentifikatsiya kerak");
-        if (isAdmin(accessor)) return;
+    private boolean allowOwnedDriverTopic(StompHeaderAccessor accessor, User user, Long driverId, String destination) {
+        if (isAdmin(accessor)) return true;
+        return ownsDriver(user, driverId)
+                || denySubscribe(accessor, destination, "DRIVER_OWNERSHIP_REQUIRED");
+    }
 
-        // /topic/driver/{id} yoki /topic/driver/{id}/trip
-        String[] parts = destination.split("/");
-        if (parts.length >= 4) {
-            try {
-                Long driverId = Long.parseLong(parts[3]);
-                driverRepository.findByUserId(user.getId()).ifPresentOrElse(driver -> {
-                    if (!driver.getId().equals(driverId)) {
-                        throw new SecurityException("Boshqa haydovchining topic'iga kirish mumkin emas");
-                    }
-                }, () -> {
-                    throw new SecurityException("Haydovchi topilmadi");
-                });
-            } catch (NumberFormatException e) {
-                throw new SecurityException("Noto'g'ri driver ID");
+    private boolean allowAnyDriver(StompHeaderAccessor accessor, User user, String destination) {
+        return driverRepository.findByUserId(user.getId()).isPresent()
+                || denySubscribe(accessor, destination, "DRIVER_ROLE_REQUIRED");
+    }
+
+    private boolean allowDriverLocation(StompHeaderAccessor accessor, User user, Long driverId, String destination) {
+        if (isAdmin(accessor) || ownsDriver(user, driverId)) return true;
+
+        boolean isActivePassenger = tripRepository
+                .findFirstByDriverIdAndStatusIn(driverId, com.taxi.backend.enums.TripStatus.ACTIVE_DRIVER_STATUSES)
+                .map(trip -> trip.getPassenger() != null && trip.getPassenger().getId().equals(user.getId()))
+                .orElse(false);
+        return isActivePassenger
+                || denySubscribe(accessor, destination, "ACTIVE_TRIP_PASSENGER_REQUIRED");
+    }
+
+    private boolean canAccessTrip(StompHeaderAccessor accessor, User user, Long tripId) {
+        if (user == null) return false;
+        if (isAdmin(accessor)) return true;
+        return tripRepository.findById(tripId).map(trip -> {
+            boolean isPassenger = trip.getPassenger() != null
+                    && trip.getPassenger().getId().equals(user.getId());
+            boolean isDriver = trip.getDriver() != null
+                    && trip.getDriver().getUser() != null
+                    && trip.getDriver().getUser().getId().equals(user.getId());
+            return isPassenger || isDriver;
+        }).orElse(false);
+    }
+
+    private boolean ownsDriver(User user, Long driverId) {
+        return user != null && user.getId() != null && driverRepository.findByUserId(user.getId())
+                .map(driver -> driver.getId().equals(driverId))
+                .orElse(false);
+    }
+
+    private Long parsePositiveId(StompHeaderAccessor accessor, String destination, String rawId) {
+        try {
+            long id = Long.parseLong(rawId);
+            if (id <= 0) {
+                denySubscribe(accessor, destination, "NON_POSITIVE_ID");
+                return null;
             }
+            return id;
+        } catch (NumberFormatException e) {
+            denySubscribe(accessor, destination, "MALFORMED_ID");
+            return null;
         }
+    }
+
+    private boolean denySubscribe(StompHeaderAccessor accessor, String destination, String reason) {
+        User user = extractUser(accessor);
+        String principalId = user != null && user.getId() != null ? user.getId().toString() : "anonymous";
+        String role = accessor.getUser() instanceof UsernamePasswordAuthenticationToken auth
+                ? auth.getAuthorities().stream().findFirst()
+                        .map(authority -> authority.getAuthority()).orElse("unknown")
+                : "unknown";
+        log.warn("[WS_DENY] principalId={} role={} destinationFamily={} reason={}",
+                principalId, role, destinationFamily(destination), reason);
+        return false;
+    }
+
+    private String destinationFamily(String destination) {
+        if (destination == null) return "missing";
+        if (destination.startsWith("/topic/chat/")) return "topic/chat";
+        if (destination.startsWith("/topic/driver-location/")) return "topic/driver-location";
+        if (destination.startsWith("/topic/driver/")) return "topic/driver";
+        if (destination.startsWith("/topic/trip/")) return "topic/trip";
+        if (destination.startsWith("/topic/admin/")) return "topic/admin";
+        if (destination.startsWith("/topic/broadcast")) return "topic/broadcast";
+        if (destination.startsWith("/queue/")) return "queue";
+        return "other";
     }
 
     private User extractUser(StompHeaderAccessor accessor) {
