@@ -1,8 +1,11 @@
 package com.taxi.backend.service;
 
 import com.taxi.backend.model.Driver;
+import com.taxi.backend.model.ClickPaymentOrder;
+import com.taxi.backend.model.ClickTransaction;
 import com.taxi.backend.model.Transaction;
 import com.taxi.backend.model.User;
+import com.taxi.backend.repository.ClickPaymentOrderRepository;
 import com.taxi.backend.repository.ClickTransactionRepository;
 import com.taxi.backend.repository.DriverRepository;
 import com.taxi.backend.repository.TransactionRepository;
@@ -16,6 +19,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.mockito.ArgumentCaptor;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -47,6 +51,7 @@ class ClickPaymentTest {
     @Mock private DriverRepository driverRepository;
     @Mock private TransactionRepository transactionRepository;
     @Mock private ClickTransactionRepository clickTxRepository;
+    @Mock private ClickPaymentOrderRepository clickOrderRepository;
 
     private PaymentService service;
 
@@ -55,10 +60,11 @@ class ClickPaymentTest {
     private static final long DRIVER_ID = 7L;
     private static final long ORDER_TIYIN = 100_000L; // 1000 so'm
     private String orderId;
+    private ClickPaymentOrder durableOrder;
 
     @BeforeEach
     void setUp() throws Exception {
-        service = new PaymentService(redis, driverRepository, transactionRepository, clickTxRepository);
+        service = new PaymentService(redis, driverRepository, transactionRepository, clickTxRepository, clickOrderRepository);
         // @Value maydonlari
         ReflectionTestUtils.setField(service, "clickServiceId", SERVICE_ID);
         ReflectionTestUtils.setField(service, "clickSecretKey", SECRET);
@@ -76,6 +82,15 @@ class ClickPaymentTest {
         // Haqiqiy order yaratish (in-memory orderCache ga tushadi)
         Map<String, Object> created = service.createOrder(DRIVER_ID, ORDER_TIYIN);
         orderId = (String) created.get("orderId");
+        durableOrder = new ClickPaymentOrder();
+        durableOrder.setMerchantTransId(orderId);
+        durableOrder.setDriverId(DRIVER_ID);
+        durableOrder.setAmount(ORDER_TIYIN);
+        durableOrder.setStatus("CREATED");
+        when(clickOrderRepository.findByMerchantTransIdForUpdate(orderId)).thenReturn(Optional.of(durableOrder));
+        when(clickOrderRepository.save(any(ClickPaymentOrder.class))).thenAnswer(i -> i.getArgument(0));
+        when(clickTxRepository.insertIfAbsent(anyString(), anyString(), anyString(), anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(1);
 
         // Kredit yo'li (creditDriverBalance) uchun stublar
         Driver d = new Driver();
@@ -106,11 +121,13 @@ class ClickPaymentTest {
         Map<String, String> p = new HashMap<>();
         p.put("click_trans_id", clickTransId);
         p.put("service_id", SERVICE_ID);
+        p.put("click_paydoc_id", "PAYDOC-" + clickTransId);
         p.put("merchant_trans_id", orderId);
         p.put("merchant_prepare_id", prepareId);
         p.put("amount", amountSom);
         p.put("action", action);
         p.put("error", "0");
+        p.put("error_note", "Success");
         p.put("sign_time", signTime);
         p.put("sign_string", sign);
         return p;
@@ -125,13 +142,56 @@ class ClickPaymentTest {
         Map<String, String> p = new HashMap<>();
         p.put("click_trans_id", clickTransId);
         p.put("service_id", SERVICE_ID);
+        p.put("click_paydoc_id", "PAYDOC-" + clickTransId);
         p.put("merchant_trans_id", orderId);
         p.put("amount", amountSom);
         p.put("action", action);
         p.put("error", "0");
+        p.put("error_note", "Success");
         p.put("sign_time", signTime);
         p.put("sign_string", sign);
         return p;
+    }
+
+    private void prepareSuccessfully(String clickTransId) throws Exception {
+        Map<String, Object> prepared = service.handleClickPrepare(prepareParams(clickTransId, "1000", true));
+        assertEquals(0, prepared.get("error"));
+    }
+
+    @Test
+    void createOrder_persistsDurableClickIntentBeforeReturningUrl() throws Exception {
+        clearInvocations(clickOrderRepository);
+
+        Map<String, Object> created = service.createOrder(DRIVER_ID, ORDER_TIYIN);
+
+        ArgumentCaptor<ClickPaymentOrder> captured = ArgumentCaptor.forClass(ClickPaymentOrder.class);
+        verify(clickOrderRepository).save(captured.capture());
+        assertEquals(created.get("orderId"), captured.getValue().getMerchantTransId());
+        assertEquals(DRIVER_ID, captured.getValue().getDriverId());
+        assertEquals(ORDER_TIYIN, captured.getValue().getAmount());
+        assertEquals("CREATED", captured.getValue().getStatus());
+    }
+
+    @Test
+    void prepare_usesDurableOrderWhenRedisIsUnavailable() throws Exception {
+        when(valueOps.get(anyString())).thenThrow(new RuntimeException("Redis unavailable"));
+
+        Map<String, Object> response = service.handleClickPrepare(prepareParams("CT-DURABLE", "1000", true));
+
+        assertEquals(0, response.get("error"));
+        assertEquals("PREPARED", durableOrder.getStatus());
+    }
+
+    @Test
+    void clickOrderStatus_onlyReturnsTheAuthenticatedDriversOrder() {
+        when(clickOrderRepository.findById(orderId)).thenReturn(Optional.of(durableOrder));
+
+        Map<String, Object> status = service.getClickOrderStatus(DRIVER_ID, orderId);
+
+        assertEquals(orderId, status.get("orderId"));
+        assertEquals("CREATED", status.get("status"));
+        assertThrows(java.util.NoSuchElementException.class,
+                () -> service.getClickOrderStatus(DRIVER_ID + 1, orderId));
     }
 
     // ─────────────────────────────────────────────
@@ -153,8 +213,85 @@ class ClickPaymentTest {
     }
 
     @Test
+    void prepare_wrongServiceId_rejectedBeforeLedgerMutation() throws Exception {
+        Map<String, String> p = prepareParams("CT-WRONG-SERVICE", "1000", true);
+        p.put("service_id", "other-service");
+
+        Map<String, Object> res = service.handleClickPrepare(p);
+
+        assertEquals(-8, res.get("error"));
+        verify(clickTxRepository, never()).insertIfAbsent(anyString(), anyString(), anyString(), anyLong(), anyLong(), anyInt(), anyString());
+    }
+
+    @Test
+    void prepare_wrongAction_rejected() throws Exception {
+        String clickTransId = "CT-PREPARE-WRONG-ACTION";
+        String action = "2";
+        String signTime = "2026-06-23 10:00:00";
+        Map<String, String> p = prepareParams(clickTransId, "1000", true);
+        p.put("action", action);
+        p.put("sign_string", md5(clickTransId + SERVICE_ID + SECRET + orderId + "1000" + action + signTime));
+
+        Map<String, Object> res = service.handleClickPrepare(p);
+
+        assertEquals(-3, res.get("error"));
+        verify(clickTxRepository, never()).insertIfAbsent(anyString(), anyString(), anyString(), anyLong(), anyLong(), anyInt(), anyString());
+    }
+
+    @Test
+    void prepare_amountMismatch_rejected() throws Exception {
+        Map<String, Object> res = service.handleClickPrepare(prepareParams("CT-PREPARE-AMOUNT", "2000", true));
+
+        assertEquals(-2, res.get("error"));
+        verify(clickTxRepository, never()).insertIfAbsent(anyString(), anyString(), anyString(), anyLong(), anyLong(), anyInt(), anyString());
+    }
+
+    @Test
+    void prepare_missingRequiredClickPaydocId_rejected() throws Exception {
+        Map<String, String> p = prepareParams("CT-MISSING-PAYDOC", "1000", true);
+        p.remove("click_paydoc_id");
+
+        Map<String, Object> res = service.handleClickPrepare(p);
+
+        assertEquals(-8, res.get("error"));
+        verify(clickTxRepository, never()).insertIfAbsent(anyString(), anyString(), anyString(), anyLong(), anyLong(), anyInt(), anyString());
+    }
+
+    @Test
+    void prepare_unknownOrder_returnsMinus5() throws Exception {
+        String unknownOrderId = "unknown-order";
+        String signTime = "2026-06-23 10:00:00";
+        Map<String, String> p = prepareParams("CT-UNKNOWN-ORDER", "1000", true);
+        p.put("merchant_trans_id", unknownOrderId);
+        p.put("sign_string", md5("CT-UNKNOWN-ORDER" + SERVICE_ID + SECRET + unknownOrderId
+                + "1000" + "0" + signTime));
+
+        Map<String, Object> res = service.handleClickPrepare(p);
+
+        assertEquals(-5, res.get("error"));
+        verify(clickTxRepository, never()).insertIfAbsent(anyString(), anyString(), anyString(), anyLong(), anyLong(), anyInt(), anyString());
+    }
+
+    @Test
+    void prepare_duplicateRetry_isDeterministicAndIdempotent() throws Exception {
+        ClickTransaction existing = new ClickTransaction();
+        existing.setMerchantTransId(orderId);
+        when(clickTxRepository.insertIfAbsent(anyString(), anyString(), anyString(), anyLong(), anyLong(), anyInt(), anyString()))
+                .thenReturn(1, 0);
+        when(clickTxRepository.findByClickTransId("CT-PREPARE-DUP")).thenReturn(Optional.of(existing));
+
+        Map<String, Object> first = service.handleClickPrepare(prepareParams("CT-PREPARE-DUP", "1000", true));
+        Map<String, Object> retry = service.handleClickPrepare(prepareParams("CT-PREPARE-DUP", "1000", true));
+
+        assertEquals(0, first.get("error"));
+        assertEquals(0, retry.get("error"));
+        verify(clickTxRepository, times(2)).insertIfAbsent(anyString(), anyString(), anyString(), anyLong(), anyLong(), anyInt(), anyString());
+    }
+
+    @Test
     void complete_validSign_accepted_andCredits() throws Exception {
-        when(clickTxRepository.markConfirmedIfNotAlready(eq("CT-1"), anyString())).thenReturn(1);
+        prepareSuccessfully("CT-1");
+        when(clickTxRepository.markConfirmedIfPrepared(eq("CT-1"), eq(orderId), anyString())).thenReturn(1);
 
         Map<String, Object> res = service.handleClickComplete(completeParams("CT-1", "1000", true));
 
@@ -173,14 +310,108 @@ class ClickPaymentTest {
         verify(transactionRepository, never()).save(any());
     }
 
+    @Test
+    void complete_wrongServiceId_rejectedBeforeAnyStateMutation() throws Exception {
+        Map<String, String> p = completeParams("CT-WRONG-COMPLETE-SERVICE", "1000", true);
+        p.put("service_id", "other-service");
+
+        Map<String, Object> res = service.handleClickComplete(p);
+
+        assertEquals(-8, res.get("error"));
+        verify(clickTxRepository, never()).markConfirmedIfPrepared(anyString(), anyString(), anyString());
+        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+    }
+
+    @Test
+    void complete_wrongAction_rejectedBeforeAnyStateMutation() throws Exception {
+        Map<String, String> p = completeParams("CT-WRONG-COMPLETE-ACTION", "1000", true);
+        p.put("action", "0");
+
+        Map<String, Object> res = service.handleClickComplete(p);
+
+        assertEquals(-3, res.get("error"));
+        verify(clickTxRepository, never()).markConfirmedIfPrepared(anyString(), anyString(), anyString());
+        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+    }
+
+    @Test
+    void complete_missingMerchantPrepareId_rejectedBeforeAnyStateMutation() throws Exception {
+        Map<String, String> p = completeParams("CT-MISSING-PREPARE-ID", "1000", true);
+        p.remove("merchant_prepare_id");
+
+        Map<String, Object> res = service.handleClickComplete(p);
+
+        assertEquals(-8, res.get("error"));
+        verify(clickTxRepository, never()).markConfirmedIfPrepared(anyString(), anyString(), anyString());
+        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+    }
+
+    @Test
+    void complete_withoutSuccessfulPrepare_rejectedAndNeverCredits() throws Exception {
+        when(clickTxRepository.markConfirmedIfPrepared(eq("CT-NO-PREPARE"), eq(orderId), anyString())).thenReturn(1);
+
+        Map<String, Object> res = service.handleClickComplete(completeParams("CT-NO-PREPARE", "1000", true));
+
+        assertEquals(-6, res.get("error"));
+        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(transactionRepository, never()).save(any());
+    }
+
+    @Test
+    void complete_wrongPrepareId_rejectedAndNeverCredits() throws Exception {
+        String clickTransId = "CT-WRONG-PREPARE";
+        String wrongPrepareId = "another-merchant-prepare-id";
+        String amount = "1000";
+        String action = "1";
+        String signTime = "2026-06-23 10:00:00";
+        Map<String, String> p = completeParams(clickTransId, amount, true);
+        prepareSuccessfully(clickTransId);
+        p.put("merchant_prepare_id", wrongPrepareId);
+        p.put("sign_string", md5(clickTransId + SERVICE_ID + SECRET + orderId + wrongPrepareId + amount + action + signTime));
+        when(clickTxRepository.markConfirmedIfPrepared(eq(clickTransId), eq(orderId), anyString())).thenReturn(1);
+
+        Map<String, Object> res = service.handleClickComplete(p);
+
+        assertEquals(-6, res.get("error"));
+        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+        verify(transactionRepository, never()).save(any());
+    }
+
+    @Test
+    void complete_failedPayment_isCancelledAndNeverCredits() throws Exception {
+        prepareSuccessfully("CT-FAILED");
+        Map<String, String> p = completeParams("CT-FAILED", "1000", true);
+        p.put("error", "-501");
+
+        Map<String, Object> res = service.handleClickComplete(p);
+
+        assertEquals(-9, res.get("error"));
+        verify(clickTxRepository).markCancelled("CT-FAILED", -501);
+        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+    }
+
+    @Test
+    void complete_anyNonZeroError_isCancelledAndNeverCredits() throws Exception {
+        prepareSuccessfully("CT-FAILED-POSITIVE");
+        Map<String, String> p = completeParams("CT-FAILED-POSITIVE", "1000", true);
+        p.put("error", "1");
+
+        Map<String, Object> res = service.handleClickComplete(p);
+
+        assertEquals(-9, res.get("error"));
+        verify(clickTxRepository).markCancelled("CT-FAILED-POSITIVE", 1);
+        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+    }
+
     // ─────────────────────────────────────────────
     // 2) IDEMPOTENTLIK — qayta yetkazish ikki marta kreditlamaydi
     // ─────────────────────────────────────────────
 
     @Test
     void complete_replayedClickTransId_doesNotDoubleCredit() throws Exception {
+        prepareSuccessfully("CT-DUP");
         // Birinchi chaqiriqda claim g'olib (1), ikkinchisida allaqachon CONFIRMED (0)
-        when(clickTxRepository.markConfirmedIfNotAlready(eq("CT-DUP"), anyString()))
+        when(clickTxRepository.markConfirmedIfPrepared(eq("CT-DUP"), eq(orderId), anyString()))
                 .thenReturn(1)   // 1-callback: kreditlaydi
                 .thenReturn(0);  // 2-callback (replay): kreditlamaydi
 
@@ -189,7 +420,7 @@ class ClickPaymentTest {
         Map<String, Object> r2 = service.handleClickComplete(p); // qayta yetkazish
 
         assertEquals(0, r1.get("error"));
-        assertEquals(0, r2.get("error")); // ikkala javob ham success (Click retry qilmasin)
+        assertEquals(-4, r2.get("error"));
         // BALANS FAQAT BIR MARTA kreditlandi — double-credit YO'Q
         verify(driverRepository, times(1)).addToBalance(DRIVER_ID, ORDER_TIYIN);
         verify(transactionRepository, times(1)).save(any(Transaction.class));
@@ -204,7 +435,8 @@ class ClickPaymentTest {
         // Redis lock olishda exception (Redis o'chgan)
         when(valueOps.setIfAbsent(anyString(), anyString(), anyLong(), any(TimeUnit.class)))
                 .thenThrow(new RuntimeException("Redis unavailable"));
-        when(clickTxRepository.markConfirmedIfNotAlready(eq("CT-REDIS"), anyString()))
+        prepareSuccessfully("CT-REDIS");
+        when(clickTxRepository.markConfirmedIfPrepared(eq("CT-REDIS"), eq(orderId), anyString()))
                 .thenReturn(1)   // DB claim hal qiladi
                 .thenReturn(0);  // replay → kreditlamaydi
 
@@ -213,7 +445,7 @@ class ClickPaymentTest {
         Map<String, Object> r2 = service.handleClickComplete(p); // Redis hali ham o'chgan + replay
 
         assertEquals(0, r1.get("error"));
-        assertEquals(0, r2.get("error"));
+        assertEquals(-4, r2.get("error"));
         verify(driverRepository, times(1)).addToBalance(DRIVER_ID, ORDER_TIYIN); // aynan bir marta
     }
 
@@ -223,11 +455,35 @@ class ClickPaymentTest {
 
     @Test
     void complete_amountMismatch_returnsMinus2_noCredit() throws Exception {
-        when(clickTxRepository.markConfirmedIfNotAlready(anyString(), anyString())).thenReturn(1);
+        prepareSuccessfully("CT-AMT");
+        when(clickTxRepository.markConfirmedIfPrepared(anyString(), anyString(), anyString())).thenReturn(1);
         // Order 1000 so'm, lekin Click 2000 so'm da'vo qilmoqda (imzo 2000 ustidan to'g'ri)
         Map<String, Object> res = service.handleClickComplete(completeParams("CT-AMT", "2000", true));
         assertEquals(-2, res.get("error"));
         verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+    }
+
+    @Test
+    void complete_amountWithUnsupportedScale_returnsMinus2_noCredit() throws Exception {
+        prepareSuccessfully("CT-SCALE");
+
+        Map<String, Object> res = service.handleClickComplete(completeParams("CT-SCALE", "1000.001", true));
+
+        assertEquals(-2, res.get("error"));
+        verify(driverRepository, never()).addToBalance(anyLong(), anyLong());
+    }
+
+    @Test
+    void complete_emptyErrorNoteIsAcceptedWhenAllOtherFieldsAreValid() throws Exception {
+        prepareSuccessfully("CT-EMPTY-NOTE");
+        when(clickTxRepository.markConfirmedIfPrepared(eq("CT-EMPTY-NOTE"), eq(orderId), anyString())).thenReturn(1);
+        Map<String, String> p = completeParams("CT-EMPTY-NOTE", "1000", true);
+        p.put("error_note", "");
+
+        Map<String, Object> res = service.handleClickComplete(p);
+
+        assertEquals(0, res.get("error"));
+        verify(driverRepository).addToBalance(DRIVER_ID, ORDER_TIYIN);
     }
 
     @Test
@@ -239,10 +495,13 @@ class ClickPaymentTest {
         Map<String, String> p = new HashMap<>();
         p.put("click_trans_id", "CT-X");
         p.put("merchant_trans_id", unknown);
+        p.put("service_id", SERVICE_ID);
+        p.put("click_paydoc_id", "PAYDOC-CT-X");
         p.put("merchant_prepare_id", unknown);
         p.put("amount", "1000");
         p.put("action", "1");
         p.put("error", "0");
+        p.put("error_note", "Success");
         p.put("sign_time", signTime);
         p.put("sign_string", sign);
 
