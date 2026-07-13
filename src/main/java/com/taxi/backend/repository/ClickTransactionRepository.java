@@ -29,10 +29,11 @@ public interface ClickTransactionRepository extends JpaRepository<ClickTransacti
     @Modifying
     @Query(nativeQuery = true, value =
             "INSERT INTO click_transactions " +
-            "(click_trans_id, merchant_trans_id, driver_id, amount, action, status, merchant_prepare_id, created_at) " +
-            "VALUES (:clickTransId, :merchantTransId, :driverId, :amount, :action, 'PREPARED', :merchantPrepareId, now()) " +
-            "ON CONFLICT (click_trans_id) DO NOTHING")
+            "(click_trans_id, click_paydoc_id, merchant_trans_id, driver_id, amount, action, status, merchant_prepare_id, created_at) " +
+            "VALUES (:clickTransId, :clickPaydocId, :merchantTransId, :driverId, :amount, :action, 'PREPARED', :merchantPrepareId, now()) " +
+            "ON CONFLICT DO NOTHING")
     int insertIfAbsent(@Param("clickTransId") String clickTransId,
+                       @Param("clickPaydocId") String clickPaydocId,
                        @Param("merchantTransId") String merchantTransId,
                        @Param("driverId") Long driverId,
                        @Param("amount") long amount,
@@ -48,11 +49,12 @@ public interface ClickTransactionRepository extends JpaRepository<ClickTransacti
     @Query(nativeQuery = true, value =
             "UPDATE click_transactions " +
             "SET status='CONFIRMED', merchant_confirm_id=:confirmId, action=1, error=0, completed_at=now() " +
-            "WHERE click_trans_id=:clickTransId AND status <> 'CONFIRMED'")
-    int markConfirmedIfNotAlready(@Param("clickTransId") String clickTransId,
-                                  @Param("confirmId") String confirmId);
+            "WHERE click_trans_id=:clickTransId AND merchant_trans_id=:merchantTransId AND status='PREPARED'")
+    int markConfirmedIfPrepared(@Param("clickTransId") String clickTransId,
+                                @Param("merchantTransId") String merchantTransId,
+                                @Param("confirmId") String confirmId);
 
-    /** Bekor qilingan/muvaffaqiyatsiz Click COMPLETE (error &lt; 0) — CONFIRMED bo'lmagan satrni CANCELLED qiladi. */
+    /** Bekor qilingan/muvaffaqiyatsiz Click COMPLETE (error != 0) — CONFIRMED bo'lmagan satrni CANCELLED qiladi. */
     @Modifying
     @Query(nativeQuery = true, value =
             "UPDATE click_transactions SET status='CANCELLED', error=:error, completed_at=now() " +

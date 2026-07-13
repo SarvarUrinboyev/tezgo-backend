@@ -2,8 +2,10 @@ package com.taxi.backend.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.taxi.backend.enums.TransactionType;
+import com.taxi.backend.model.ClickPaymentOrder;
 import com.taxi.backend.model.Driver;
 import com.taxi.backend.model.Transaction;
+import com.taxi.backend.repository.ClickPaymentOrderRepository;
 import com.taxi.backend.repository.ClickTransactionRepository;
 import com.taxi.backend.repository.DriverRepository;
 import com.taxi.backend.repository.TransactionRepository;
@@ -13,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
+import java.math.BigDecimal;
 import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -60,6 +63,7 @@ public class PaymentService {
     private final DriverRepository driverRepository;
     private final TransactionRepository transactionRepository;
     private final ClickTransactionRepository clickTxRepository;
+    private final ClickPaymentOrderRepository clickOrderRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // Redis ishlamasa, orderlarni in-memory saqlash (24 soat emas, restart gacha)
@@ -67,13 +71,15 @@ public class PaymentService {
             = new java.util.concurrent.ConcurrentHashMap<>();
 
     public PaymentService(StringRedisTemplate redis,
-                          DriverRepository driverRepository,
-                          TransactionRepository transactionRepository,
-                          ClickTransactionRepository clickTxRepository) {
+                           DriverRepository driverRepository,
+                           TransactionRepository transactionRepository,
+                           ClickTransactionRepository clickTxRepository,
+                           ClickPaymentOrderRepository clickOrderRepository) {
         this.redis = redis;
         this.driverRepository = driverRepository;
         this.transactionRepository = transactionRepository;
         this.clickTxRepository = clickTxRepository;
+        this.clickOrderRepository = clickOrderRepository;
     }
 
     // ─────────────────────────────────────────────
@@ -85,9 +91,70 @@ public class PaymentService {
      * @param driverId — balansi to'ldiriladigan haydovchi
      * @param amount   — tiyinda (UZS * 100)
      */
+    /**
+     * Reads the durable order under a row lock. The Redis fallback only
+     * migrates an order created by the immediately preceding legacy release;
+     * newly created Click orders are persisted before their URL is returned.
+     */
+    private ClickPaymentOrder findClickOrderForUpdate(String orderId) {
+        if (orderId == null || orderId.isBlank()) return null;
+        Optional<ClickPaymentOrder> durable = clickOrderRepository.findByMerchantTransIdForUpdate(orderId);
+        if (durable.isPresent()) return durable.get();
+
+        Map<String, Object> legacy = getOrder(orderId);
+        if (legacy == null) return null;
+        long driverId = toLong(legacy.get("driverId"));
+        long amount = toLong(legacy.get("amount"));
+        if (driverId <= 0 || amount <= 0 || amount % 100 != 0) return null;
+
+        ClickPaymentOrder recovered = new ClickPaymentOrder();
+        recovered.setMerchantTransId(orderId);
+        recovered.setDriverId(driverId);
+        recovered.setAmount(amount);
+        recovered.setStatus("CREATED");
+        ClickPaymentOrder saved = clickOrderRepository.save(recovered);
+        return saved != null ? saved : recovered;
+    }
+
+    public Map<String, Object> getClickOrderStatus(Long driverId, String orderId) {
+        ClickPaymentOrder order = clickOrderRepository.findById(orderId)
+                .filter(candidate -> candidate.getDriverId().equals(driverId))
+                .orElseThrow(() -> new NoSuchElementException("Payment order not found"));
+        return Map.of(
+                "orderId", order.getMerchantTransId(),
+                "status", order.getStatus(),
+                "amount", order.getAmount()
+        );
+    }
+
+    private void cacheOrderStatus(String orderId, ClickPaymentOrder order) {
+        Map<String, Object> cached = new HashMap<>();
+        cached.put("orderId", orderId);
+        cached.put("driverId", order.getDriverId());
+        cached.put("amount", order.getAmount());
+        cached.put("status", order.getStatus());
+        cached.put("clickTransId", order.getClickTransId());
+        try { saveOrder(orderId, cached); } catch (Exception e) {
+            log.warning("[CLICK] Redis cache update failed order=" + safeId(orderId));
+        }
+    }
+
     @SuppressWarnings("unchecked")
+    @Transactional
     public Map<String, Object> createOrder(Long driverId, Long amount) throws Exception {
+        if (driverId == null || amount == null || amount < 100_000L || amount > 10_000_000_000L
+                || amount % 100 != 0) {
+            throw new IllegalArgumentException("Noto'g'ri to'lov summasi");
+        }
         String orderId = UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+
+        ClickPaymentOrder clickOrder = new ClickPaymentOrder();
+        clickOrder.setMerchantTransId(orderId);
+        clickOrder.setDriverId(driverId);
+        clickOrder.setAmount(amount);
+        clickOrder.setStatus("CREATED");
+        clickOrderRepository.save(clickOrder);
+        log.info("[CLICK][CREATE] order=" + safeId(orderId) + " driverId=" + driverId + " amount=" + amount);
 
         Map<String, Object> order = new HashMap<>();
         order.put("orderId", orderId);
@@ -337,43 +404,71 @@ public class PaymentService {
 
     /**
      * Click PREPARE (action=0) callback.
-     * Sign (Click Merchant API, MD5 — amount/action OMITTED edi, V41 da tuzatildi):
+     * Sign (Click Shop API, MD5 — amount/action OMITTED edi, V41 da tuzatildi):
      *   md5(click_trans_id + service_id + SECRET_KEY + merchant_trans_id + amount + action + sign_time)
      */
     @Transactional
     public Map<String, Object> handleClickPrepare(Map<String, String> params) {
         String orderId      = params.get("merchant_trans_id");
         String clickTransId = params.get("click_trans_id");
+        String clickPaydocId = params.get("click_paydoc_id");
         String amount       = params.getOrDefault("amount", "");
         String action       = params.getOrDefault("action", "");
         String signTime     = params.getOrDefault("sign_time", "");
         String signString   = params.getOrDefault("sign_string", "");
 
+        if (!hasRequiredClickFields(params, false)) {
+            return clickError(-8, "Error in request from Click", clickTransId, orderId);
+        }
+        if (!constantTimeEquals(clickServiceId, params.get("service_id"))) {
+            log.warning("[CLICK][PREPARE] service_id mismatch trans=" + safeId(clickTransId));
+            return clickError(-8, "Error in request from Click", clickTransId, orderId);
+        }
+        if (!"0".equals(action)) {
+            return clickError(-3, "Action not found", clickTransId, orderId);
+        }
         String mySign = md5(clickTransId + clickServiceId + clickSecretKey + orderId + amount + action + signTime);
         if (!constantTimeEquals(mySign, signString)) {
+            log.warning("[CLICK][SIGNATURE_INVALID] action=prepare trans=" + safeId(clickTransId));
             return clickError(-1, "Sign tekshiruvi xato", clickTransId, orderId);
         }
 
-        Map<String, Object> order = getOrder(orderId);
+        ClickPaymentOrder order = findClickOrderForUpdate(orderId);
         if (order == null) {
             return clickError(-5, "Order topilmadi", clickTransId, orderId);
         }
-
-        // Bardoshli idempotency ledgeriga PREPARED satr (qayta chaqirilsa NO-OP).
-        try {
-            clickTxRepository.insertIfAbsent(clickTransId, orderId,
-                    toLong(order.get("driverId")), toLong(order.get("amount")), 0, orderId);
-        } catch (Exception e) {
-            log.warning("Click prepare ledger yozuvi o'tkazib yuborildi: " + e.getMessage());
+        Long callbackTiyin = clickAmountToTiyin(amount);
+        if (callbackTiyin == null || !callbackTiyin.equals(order.getAmount())) {
+            return clickError(-2, "Summa mos kelmaydi", clickTransId, orderId);
+        }
+        if ("CONFIRMED".equals(order.getStatus())) {
+            return clickError(-4, "Already paid", clickTransId, orderId);
+        }
+        if ("CANCELLED".equals(order.getStatus())) {
+            return clickError(-9, "Transaction cancelled", clickTransId, orderId);
+        }
+        if ("PREPARED".equals(order.getStatus())
+                && (!clickTransId.equals(order.getClickTransId()) || !clickPaydocId.equals(order.getClickPaydocId()))) {
+            return clickError(-6, "Transaction does not exist", clickTransId, orderId);
         }
 
-        return Map.of(
-                "click_trans_id",      clickTransId,
-                "merchant_trans_id",   orderId,
-                "merchant_prepare_id", orderId,
-                "error",               0,
-                "error_note",          "Success"
-        );
+        if ("CREATED".equals(order.getStatus())) {
+            order.setStatus("PREPARED");
+            order.setClickTransId(clickTransId);
+            order.setClickPaydocId(clickPaydocId);
+            order.setUpdatedAt(java.time.LocalDateTime.now());
+            clickOrderRepository.save(order);
+        }
+        int inserted = clickTxRepository.insertIfAbsent(clickTransId, clickPaydocId, orderId,
+                order.getDriverId(), order.getAmount(), 0, orderId);
+        if (inserted == 0 && clickTxRepository.findByClickTransId(clickTransId)
+                .filter(tx -> orderId.equals(tx.getMerchantTransId()))
+                .isEmpty()) {
+            return clickError(-6, "Transaction does not exist", clickTransId, orderId);
+        }
+        log.info("[CLICK][PREPARE] accepted trans=" + safeId(clickTransId)
+                + " order=" + safeId(orderId) + " amount=" + order.getAmount());
+        return clickPrepareSuccess(clickTransId, orderId);
     }
 
     /**
@@ -390,6 +485,7 @@ public class PaymentService {
     public Map<String, Object> handleClickComplete(Map<String, String> params) {
         String orderId      = params.get("merchant_trans_id");
         String clickTransId = params.get("click_trans_id");
+        String clickPaydocId = params.get("click_paydoc_id");
         String prepareId    = params.getOrDefault("merchant_prepare_id", "");
         String amount       = params.getOrDefault("amount", "");
         String action       = params.getOrDefault("action", "");
@@ -397,38 +493,63 @@ public class PaymentService {
         String signString   = params.getOrDefault("sign_string", "");
         String error        = params.getOrDefault("error", "0");
 
+        if (!hasRequiredClickFields(params, true)) {
+            return clickError(-8, "Error in request from Click", clickTransId, orderId);
+        }
+        if (!constantTimeEquals(clickServiceId, params.get("service_id"))) {
+            log.warning("[CLICK][COMPLETE] service_id mismatch trans=" + safeId(clickTransId));
+            return clickError(-8, "Error in request from Click", clickTransId, orderId);
+        }
+        if (!"1".equals(action)) {
+            return clickError(-3, "Action not found", clickTransId, orderId);
+        }
+
         String mySign = md5(clickTransId + clickServiceId + clickSecretKey + orderId
                 + prepareId + amount + action + signTime);
         if (!constantTimeEquals(mySign, signString)) {
+            log.warning("[CLICK][SIGNATURE_INVALID] action=complete trans=" + safeId(clickTransId));
             return clickError(-1, "Sign tekshiruvi xato", clickTransId, orderId);
         }
 
-        Map<String, Object> order = getOrder(orderId);
+        ClickPaymentOrder order = findClickOrderForUpdate(orderId);
         if (order == null) {
             return clickError(-5, "Order topilmadi", clickTransId, orderId);
         }
-        Long driverId    = toLong(order.get("driverId"));
-        long orderAmount = toLong(order.get("amount")); // tiyin (ishonchli — biz yaratgan order)
+        if (!orderId.equals(prepareId) || !"PREPARED".equals(order.getStatus())
+                || !clickTransId.equals(order.getClickTransId())
+                || !clickPaydocId.equals(order.getClickPaydocId())) {
+            if ("CONFIRMED".equals(order.getStatus())) {
+                log.info("[CLICK][DUPLICATE_NOOP] trans=" + safeId(clickTransId));
+                return clickError(-4, "Already paid", clickTransId, orderId);
+            }
+            return clickError(-6, "Transaction does not exist", clickTransId, orderId);
+        }
+        long orderAmount = order.getAmount();
 
         // Bardoshli ledgerda satr borligini kafolatlash (PREPARE chaqirilmagan bo'lsa ham).
-        clickTxRepository.insertIfAbsent(clickTransId, orderId, driverId, orderAmount, 1, prepareId);
 
         // Foydalanuvchi bekor qildi / Click tomonda muvaffaqiyatsiz (error != 0) — kreditlamaymiz.
-        if (!"0".equals(error)) {
-            clickTxRepository.markCancelled(clickTransId, parseIntSafe(error));
-            return clickSuccess(clickTransId, orderId, "Cancelled");
+        int clickError = parseIntSafe(error);
+        if (clickError == Integer.MIN_VALUE) {
+            return clickError(-8, "Error in request from Click", clickTransId, orderId);
+        }
+        if (clickError != 0) {
+            clickTxRepository.markCancelled(clickTransId, clickError);
+            order.setStatus("CANCELLED");
+            order.setUpdatedAt(java.time.LocalDateTime.now());
+            clickOrderRepository.save(order);
+            log.info("[CLICK][FAILED] trans=" + safeId(clickTransId) + " error=" + clickError);
+            return clickError(-9, "Transaction cancelled", clickTransId, orderId);
         }
 
         // Summa tekshiruvi: Click so'm yuboradi → tiyinga AYNAN aylantirish (BigDecimal — float drift yo'q).
-        long callbackTiyin;
-        try {
-            callbackTiyin = new java.math.BigDecimal(amount).movePointRight(2).longValueExact();
-        } catch (Exception e) {
+        Long callbackTiyin = clickAmountToTiyin(amount);
+        if (callbackTiyin == null) {
             return clickError(-2, "Summa formati xato", clickTransId, orderId);
         }
-        if (callbackTiyin != orderAmount) {
+        if (!callbackTiyin.equals(orderAmount)) {
             log.warning("Click summa mos kelmadi: callback=" + callbackTiyin
-                    + " order=" + orderAmount + " trans=" + clickTransId);
+                    + " order=" + orderAmount + " trans=" + safeId(clickTransId));
             return clickError(-2, "Summa mos kelmaydi", clickTransId, orderId);
         }
 
@@ -442,26 +563,26 @@ public class PaymentService {
             log.warning("Redis lock mavjud emas (DB claim baribir hal qiladi): " + e.getMessage());
         }
         try {
-            int claimed = clickTxRepository.markConfirmedIfNotAlready(clickTransId, orderId);
+            int claimed = clickTxRepository.markConfirmedIfPrepared(clickTransId, orderId, orderId);
             if (claimed == 1) {
                 // G'olib — aynan BIR marta kreditlash (Payme/admin bilan bir xil ledger yo'li).
-                creditDriverBalance(driverId, orderAmount, "Click to'lovi #" + orderId);
-                order.put("status", "PAID");
-                order.put("clickTransId", clickTransId);
-                try { saveOrder(orderId, order); } catch (Exception e) {
-                    log.warning("Click order saqlash xato: " + e.getMessage());
-                }
-                log.info("Click COMPLETE kreditlandi: driverId=" + driverId + " +" + orderAmount
-                        + " tiyin trans=" + clickTransId);
+                creditDriverBalance(order.getDriverId(), orderAmount, "Click to'lovi #" + orderId);
+                order.setStatus("CONFIRMED");
+                order.setUpdatedAt(java.time.LocalDateTime.now());
+                clickOrderRepository.save(order);
+                cacheOrderStatus(orderId, order);
+                log.info("[CLICK][CREDIT_APPLIED] driverId=" + order.getDriverId() + " amount=" + orderAmount
+                        + " trans=" + safeId(clickTransId));
             } else {
                 // Qayta-yetkazish / duplicate — allaqachon CONFIRMED. Idempotent: kreditlamaymiz.
-                log.info("Click COMPLETE qayta-yetkazish e'tiborsiz qoldirildi (idempotent): trans=" + clickTransId);
+                log.info("[CLICK][DUPLICATE_NOOP] trans=" + safeId(clickTransId));
+                return clickError(-4, "Already paid", clickTransId, orderId);
             }
         } finally {
             if (lockHeld) { try { redis.delete(lockKey); } catch (Exception ignored) {} }
         }
 
-        return clickSuccess(clickTransId, orderId, "Success");
+        return clickCompleteSuccess(clickTransId, orderId);
     }
 
     // ─────────────────────────────────────────────
@@ -471,13 +592,17 @@ public class PaymentService {
     /** Atomic balance credit — race condition himoyasi */
     @Transactional
     public void creditDriverBalance(Long driverId, Long amount, String description) {
-        driverRepository.findById(driverId).ifPresent(driver -> {
+        Driver driver = driverRepository.findById(driverId)
+                .orElseThrow(() -> new IllegalStateException("Click payment driver not found"));
             // Atomic DB update — concurrent callback'lar xavfsiz
-            driverRepository.addToBalance(driver.getId(), amount);
+            if (driverRepository.addToBalance(driver.getId(), amount) != 1) {
+                throw new IllegalStateException("Click payment balance update failed");
+            }
 
             // Atomik update'dan keyin yangilangan balansni o'qish
             driverRepository.flush();
-            Driver updated = driverRepository.findById(driverId).orElse(driver);
+            Driver updated = driverRepository.findById(driverId)
+                    .orElseThrow(() -> new IllegalStateException("Click payment driver disappeared"));
             long balanceAfter = updated.getBalance();
             long balanceBefore = balanceAfter - amount;
 
@@ -490,7 +615,6 @@ public class PaymentService {
             tx.setDescription(description);
             transactionRepository.save(tx);
             log.info("Balance credited: driverId=" + driverId + " +" + amount + " tiyin");
-        });
     }
 
     // ─────────────────────────────────────────────
@@ -578,13 +702,23 @@ public class PaymentService {
 
     // ── Click javob / yordamchi metodlari ──
 
-    private Map<String, Object> clickSuccess(String clickTransId, String orderId, String note) {
+    private Map<String, Object> clickPrepareSuccess(String clickTransId, String orderId) {
+        return Map.of(
+                "click_trans_id",      clickTransId,
+                "merchant_trans_id",   orderId,
+                "merchant_prepare_id", orderId,
+                "error",               0,
+                "error_note",          "Success"
+        );
+    }
+
+    private Map<String, Object> clickCompleteSuccess(String clickTransId, String orderId) {
         return Map.of(
                 "click_trans_id",      clickTransId,
                 "merchant_trans_id",   orderId,
                 "merchant_confirm_id", orderId,
                 "error",               0,
-                "error_note",          note
+                "error_note",          "Success"
         );
     }
 
@@ -606,7 +740,37 @@ public class PaymentService {
     }
 
     private int parseIntSafe(String s) {
-        try { return Integer.parseInt(s.trim()); } catch (Exception e) { return -1; }
+        try { return Integer.parseInt(s.trim()); } catch (Exception e) { return Integer.MIN_VALUE; }
+    }
+
+    private boolean hasRequiredClickFields(Map<String, String> params, boolean complete) {
+        List<String> required = new ArrayList<>(List.of(
+                "click_trans_id", "service_id", "click_paydoc_id", "merchant_trans_id",
+                "amount", "action", "error", "error_note", "sign_time", "sign_string"));
+        if (complete) required.add("merchant_prepare_id");
+        return required.stream().allMatch(key -> {
+            String value = params.get(key);
+            // Click may send an empty error_note for a successful callback;
+            // the field itself must still be present.
+            return value != null && ("error_note".equals(key) || !value.isBlank());
+        });
+    }
+
+    /** Click sends decimal UZS; all internal money is exact tiyin. */
+    private Long clickAmountToTiyin(String amount) {
+        if (amount == null || !amount.matches("\\d+(\\.\\d{1,2})?")) return null;
+        try {
+            BigDecimal uzs = new BigDecimal(amount);
+            long tiyin = uzs.movePointRight(2).longValueExact();
+            return tiyin > 0 ? tiyin : null;
+        } catch (ArithmeticException e) {
+            return null;
+        }
+    }
+
+    private String safeId(String value) {
+        if (value == null || value.isBlank()) return "-";
+        return value.length() <= 12 ? value : value.substring(0, 12) + "...";
     }
 
     private String md5(String input) {

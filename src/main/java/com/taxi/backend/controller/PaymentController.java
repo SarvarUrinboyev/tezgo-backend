@@ -50,6 +50,23 @@ public class PaymentController {
         }
     }
 
+    /** Authenticated driver-only status source for the app after a Click redirect. */
+    @GetMapping("/click/orders/{orderId}")
+    public ResponseEntity<?> clickOrderStatus(@AuthenticationPrincipal User user,
+                                               @PathVariable String orderId) {
+        var driver = driverRepository.findByUserId(user.getId())
+                .orElse(null);
+        if (driver == null) {
+            return ResponseEntity.notFound().build();
+        }
+        try {
+            return ResponseEntity.ok(paymentService.getClickOrderStatus(driver.getId(), orderId));
+        } catch (java.util.NoSuchElementException e) {
+            // Do not disclose whether an order belongs to another driver.
+            return ResponseEntity.notFound().build();
+        }
+    }
+
     /**
      * Payme JSON-RPC 2.0 callback.
      * Payme serveri bu endpointni chaqiradi: Basic auth orqali.

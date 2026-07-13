@@ -25,6 +25,10 @@ public class ClickTransaction {
     @Column(name = "click_trans_id", nullable = false, unique = true, length = 64)
     private String clickTransId;
 
+    /** Shop API payment document identifier, retained for reconciliation. */
+    @Column(name = "click_paydoc_id", unique = true, length = 64)
+    private String clickPaydocId;
+
     @Column(name = "merchant_trans_id", nullable = false, length = 64)
     private String merchantTransId;
 
@@ -66,6 +70,9 @@ public class ClickTransaction {
 
     public String getClickTransId() { return clickTransId; }
     public void setClickTransId(String clickTransId) { this.clickTransId = clickTransId; }
+
+    public String getClickPaydocId() { return clickPaydocId; }
+    public void setClickPaydocId(String clickPaydocId) { this.clickPaydocId = clickPaydocId; }
 
     public String getMerchantTransId() { return merchantTransId; }
     public void setMerchantTransId(String merchantTransId) { this.merchantTransId = merchantTransId; }
