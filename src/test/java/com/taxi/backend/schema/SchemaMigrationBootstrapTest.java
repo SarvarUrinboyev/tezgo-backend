@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Build-time migration bootstrap guard (Testcontainers Postgres, prod major 16).
  *
  * QAMROVI:
- *  1) Butun Flyway zanjiri (V1..V27) TOZA bazada noldan muvaffaqiyatli qo'llaniladi —
+ *  1) Butun Flyway zanjiri (V1..V48) TOZA bazada noldan muvaffaqiyatli qo'llaniladi —
  *     deploy'gacha ko'rinmaydigan migratsiya buzilishini ushlaydi (masalan, V5/V6
  *     tartib xatosi shu test orqali topilgan edi).
  *  2) V27 + SystemSetting moslashuvi: app_settings jadvali yaratilgan va SystemSetting
@@ -59,12 +59,12 @@ class SchemaMigrationBootstrapTest {
     private EntityManager em;
 
     @Test
-    void flywayChainAppliesFromScratch_throughV47() {
+    void flywayChainAppliesFromScratch_throughV48() {
         Object count = em.createNativeQuery(
-                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '47' AND success = true")
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '48' AND success = true")
                 .getSingleResult();
         assertEquals(1, ((Number) count).intValue(),
-                "V47 toza bazada muvaffaqiyatli qo'llanishi kerak (zanjir V1..V47 buzilmagan)");
+                "V48 toza bazada muvaffaqiyatli qo'llanishi kerak (zanjir V1..V48 buzilmagan)");
     }
 
     @Test
@@ -79,13 +79,13 @@ class SchemaMigrationBootstrapTest {
     }
 
     @Test
-    void v47RequestHashColumnAndEntityMappingRemainAligned() throws NoSuchFieldException {
+    void v48RequestHashColumnAndEntityMappingRemainAligned() throws NoSuchFieldException {
         Column mapping = OperatorTripIdempotency.class.getDeclaredField("requestHash")
                 .getAnnotation(Column.class);
 
         assertNotNull(mapping);
-        assertEquals("CHAR(64)", mapping.columnDefinition());
-        assertEquals("character", em.createNativeQuery(
+        assertEquals("", mapping.columnDefinition());
+        assertEquals("character varying", em.createNativeQuery(
                 "SELECT data_type FROM information_schema.columns "
                         + "WHERE table_name = 'operator_trip_idempotencies' AND column_name = 'request_hash'")
                 .getSingleResult());
