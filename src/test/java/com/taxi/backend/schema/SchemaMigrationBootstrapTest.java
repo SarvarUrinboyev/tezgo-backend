@@ -57,12 +57,23 @@ class SchemaMigrationBootstrapTest {
     private EntityManager em;
 
     @Test
-    void flywayChainAppliesFromScratch_throughV27() {
+    void flywayChainAppliesFromScratch_throughV47() {
         Object count = em.createNativeQuery(
-                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '27' AND success = true")
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '47' AND success = true")
                 .getSingleResult();
         assertEquals(1, ((Number) count).intValue(),
-                "V27 toza bazada muvaffaqiyatli qo'llanishi kerak (zanjir V1..V27 buzilmagan)");
+                "V47 toza bazada muvaffaqiyatli qo'llanishi kerak (zanjir V1..V47 buzilmagan)");
+    }
+
+    @Test
+    void v47AddsDurableIdempotencyAndTheImmediateTripGuard() {
+        assertEquals(1, ((Number) em.createNativeQuery(
+                "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'operator_trip_idempotencies'")
+                .getSingleResult()).intValue());
+        assertEquals(1, ((Number) em.createNativeQuery(
+                "SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'uq_trips_one_active_immediate_trip_per_passenger' "
+                        + "AND indexdef LIKE '%scheduled_at IS NULL%'")
+                .getSingleResult()).intValue());
     }
 
     @Test

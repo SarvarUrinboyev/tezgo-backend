@@ -4,9 +4,9 @@ import com.taxi.backend.dto.OperatorReassignRequest;
 import com.taxi.backend.dto.OperatorTripRequest;
 import com.taxi.backend.model.User;
 import com.taxi.backend.service.AdminService;
-import com.taxi.backend.service.ApiRateLimitService;
 import com.taxi.backend.service.OperatorReassignService;
 import com.taxi.backend.service.OperatorService;
+import com.taxi.backend.service.OperatorTripCreateIdempotencyService;
 import com.taxi.backend.service.PassengerHistoryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -25,18 +25,18 @@ import java.util.Map;
 public class OperatorController {
 
     private final OperatorService operatorService;
-    private final ApiRateLimitService rateLimitService;
+    private final OperatorTripCreateIdempotencyService tripCreateIdempotencyService;
     private final PassengerHistoryService passengerHistoryService;
     private final AdminService adminService;
     private final OperatorReassignService operatorReassignService;
 
     public OperatorController(OperatorService operatorService,
-                               ApiRateLimitService rateLimitService,
+                               OperatorTripCreateIdempotencyService tripCreateIdempotencyService,
                                PassengerHistoryService passengerHistoryService,
                                AdminService adminService,
                                OperatorReassignService operatorReassignService) {
         this.operatorService = operatorService;
-        this.rateLimitService = rateLimitService;
+        this.tripCreateIdempotencyService = tripCreateIdempotencyService;
         this.passengerHistoryService = passengerHistoryService;
         this.adminService = adminService;
         this.operatorReassignService = operatorReassignService;
@@ -46,19 +46,14 @@ public class OperatorController {
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Buyurtma yaratildi: {tripId, estimatedPrice, ...}"),
         @ApiResponse(responseCode = "400", description = "Validatsiya xatosi"),
+        @ApiResponse(responseCode = "409", description = "Idempotency key qayta ishlatilgan yoki faol buyurtma mavjud"),
         @ApiResponse(responseCode = "429", description = "Rate limit oshdi")
     })
     @PostMapping("/trip/create")
     public ResponseEntity<?> createTrip(@AuthenticationPrincipal User operator,
+                                         @RequestHeader("Idempotency-Key") String idempotencyKey,
                                          @Valid @RequestBody OperatorTripRequest req) {
-        // Rate limit: 1 daqiqada max 20 ta buyurtma
-        rateLimitService.checkLimit("operator:" + operator.getId(), 20, 60);
-
-        try {
-            return ResponseEntity.ok(operatorService.createTrip(operator, req));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
-        }
+        return ResponseEntity.ok(tripCreateIdempotencyService.createTrip(operator, idempotencyKey, req));
     }
 
     @Operation(summary = "Aktiv buyurtmalar", description = "Barcha faol CALL buyurtmalar ro'yxati. Har 10 soniyada polling qilinadi.")
