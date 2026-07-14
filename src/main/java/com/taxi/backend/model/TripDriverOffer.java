@@ -52,8 +52,19 @@ public class TripDriverOffer {
     @Column(name = "offered_at", nullable = false)
     private LocalDateTime offeredAt;
 
-    @Column(name = "expires_at", nullable = false)
+    /** Compatibility mirror of responseExpiresAt; null until the first outbound delivery attempt starts. */
+    @Column(name = "expires_at")
     private LocalDateTime expiresAt;
+
+    @Column(name = "first_delivery_attempt_at")
+    private LocalDateTime firstDeliveryAttemptAt;
+
+    @Column(name = "provider_accepted_at")
+    private LocalDateTime providerAcceptedAt;
+
+    /** Authoritative fixed deadline used by database state and the offerExpiresAt payload. */
+    @Column(name = "response_expires_at")
+    private LocalDateTime responseExpiresAt;
 
     @Column(name = "acknowledged_at")
     private LocalDateTime acknowledgedAt;
@@ -66,6 +77,18 @@ public class TripDriverOffer {
 
     @Column(name = "delivery_error", length = 500)
     private String deliveryError;
+
+    @Column(name = "delivery_attempt_count", nullable = false)
+    private int deliveryAttemptCount;
+
+    @Column(name = "next_delivery_attempt_at")
+    private LocalDateTime nextDeliveryAttemptAt;
+
+    @Column(name = "last_delivery_outcome", length = 40)
+    private String lastDeliveryOutcome;
+
+    @Column(name = "delivery_recipient_fingerprint", length = 64)
+    private String deliveryRecipientFingerprint;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -92,6 +115,12 @@ public class TripDriverOffer {
     public void setOfferedAt(LocalDateTime offeredAt) { this.offeredAt = offeredAt; }
     public LocalDateTime getExpiresAt() { return expiresAt; }
     public void setExpiresAt(LocalDateTime expiresAt) { this.expiresAt = expiresAt; }
+    public LocalDateTime getFirstDeliveryAttemptAt() { return firstDeliveryAttemptAt; }
+    public void setFirstDeliveryAttemptAt(LocalDateTime firstDeliveryAttemptAt) { this.firstDeliveryAttemptAt = firstDeliveryAttemptAt; }
+    public LocalDateTime getProviderAcceptedAt() { return providerAcceptedAt; }
+    public void setProviderAcceptedAt(LocalDateTime providerAcceptedAt) { this.providerAcceptedAt = providerAcceptedAt; }
+    public LocalDateTime getResponseExpiresAt() { return responseExpiresAt; }
+    public void setResponseExpiresAt(LocalDateTime responseExpiresAt) { this.responseExpiresAt = responseExpiresAt; }
     public LocalDateTime getAcknowledgedAt() { return acknowledgedAt; }
     public void setAcknowledgedAt(LocalDateTime acknowledgedAt) { this.acknowledgedAt = acknowledgedAt; }
     public LocalDateTime getClosedAt() { return closedAt; }
@@ -100,6 +129,14 @@ public class TripDriverOffer {
     public void setDeliveryAttemptState(String deliveryAttemptState) { this.deliveryAttemptState = deliveryAttemptState; }
     public String getDeliveryError() { return deliveryError; }
     public void setDeliveryError(String deliveryError) { this.deliveryError = deliveryError; }
+    public int getDeliveryAttemptCount() { return deliveryAttemptCount; }
+    public void setDeliveryAttemptCount(int deliveryAttemptCount) { this.deliveryAttemptCount = deliveryAttemptCount; }
+    public LocalDateTime getNextDeliveryAttemptAt() { return nextDeliveryAttemptAt; }
+    public void setNextDeliveryAttemptAt(LocalDateTime nextDeliveryAttemptAt) { this.nextDeliveryAttemptAt = nextDeliveryAttemptAt; }
+    public String getLastDeliveryOutcome() { return lastDeliveryOutcome; }
+    public void setLastDeliveryOutcome(String lastDeliveryOutcome) { this.lastDeliveryOutcome = lastDeliveryOutcome; }
+    public String getDeliveryRecipientFingerprint() { return deliveryRecipientFingerprint; }
+    public void setDeliveryRecipientFingerprint(String deliveryRecipientFingerprint) { this.deliveryRecipientFingerprint = deliveryRecipientFingerprint; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

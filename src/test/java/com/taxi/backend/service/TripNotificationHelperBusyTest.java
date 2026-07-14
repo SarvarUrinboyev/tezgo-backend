@@ -39,7 +39,6 @@ class TripNotificationHelperBusyTest {
         trip.setId(1L); trip.setStatus(TripStatus.SEARCHING); trip.setTotalPrice(100L);
         TripOfferLifecycleService lifecycle = new TripOfferLifecycleService(trips, drivers, offers, matching, delivery);
         ReflectionTestUtils.setField(lifecycle, "matchingRadiusKm", 5.0d);
-        ReflectionTestUtils.setField(lifecycle, "offerTtlSeconds", 15L);
         when(trips.findByIdForUpdate(1L)).thenReturn(Optional.of(trip));
         when(offers.findLiveByTripIdForUpdate(anyLong(), any())).thenReturn(List.of());
         when(offers.findAllOfferedDriverIdsByTripId(1L)).thenReturn(List.of());

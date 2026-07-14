@@ -50,26 +50,25 @@ class TripOfferDeliveryServiceTest {
         TripDriverOffer offer = new TripDriverOffer();
         offer.setId(1L); offer.setTrip(trip); offer.setDriver(driver); offer.setDistanceKm(1.0d);
         offer.setStatus(TripDriverOfferStatus.PENDING_DELIVERY);
-        LocalDateTime expiry = LocalDateTime.now().plusSeconds(15);
-        offer.setExpiresAt(expiry);
         when(offers.findById(1L)).thenReturn(Optional.of(offer));
         when(offers.findByIdForUpdate(1L)).thenReturn(Optional.of(offer));
         when(trips.findByIdForUpdate(55L)).thenReturn(Optional.of(trip));
+        when(pushes.sendOrderPushWithOutcome(eq(9L), any())).thenReturn(success());
 
         new TripOfferDeliveryService(offers, trips, messaging, pushes).deliverOfferAsync(1L);
 
         ArgumentCaptor<Map<String, Object>> ws = ArgumentCaptor.forClass(Map.class);
         ArgumentCaptor<Map<String, Object>> push = ArgumentCaptor.forClass(Map.class);
         verify(messaging).convertAndSend(eq("/topic/driver/9"), ws.capture());
-        verify(pushes).notifyDriver(eq(9L), eq(null), eq(null), push.capture());
+        verify(pushes).sendOrderPushWithOutcome(eq(9L), push.capture());
         assertThat(ws.getValue()).containsEntry("type", "NEW_ORDER").containsEntry("tripId", 55L);
         assertThat(push.getValue()).containsEntry("type", "ORDER_PUSH").containsEntry("event", "ORDER_PUSH")
                 .containsEntry("tripId", 55L);
-        long expectedExpiry = expiry.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        long expectedExpiry = offer.getResponseExpiresAt().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
         assertThat(ws.getValue().get("offerExpiresAt")).isEqualTo(expectedExpiry);
         assertThat(push.getValue().get("offerExpiresAt")).isEqualTo(expectedExpiry);
         assertThat(offer.getStatus()).isEqualTo(TripDriverOfferStatus.ACTIVE);
-        assertThat(offer.getDeliveryAttemptState()).isEqualTo("ATTEMPTED");
+        assertThat(offer.getDeliveryAttemptState()).isEqualTo("PROVIDER_ACCEPTED");
         InOrder lockOrder = inOrder(offers, trips);
         lockOrder.verify(offers).findById(1L);
         lockOrder.verify(trips).findByIdForUpdate(55L);
@@ -86,6 +85,7 @@ class TripOfferDeliveryServiceTest {
         offer.setId(1L); offer.setTrip(trip); offer.setDriver(driver);
         offer.setStatus(TripDriverOfferStatus.PENDING_DELIVERY);
         offer.setExpiresAt(LocalDateTime.now().plusSeconds(15));
+        offer.setResponseExpiresAt(offer.getExpiresAt());
         when(offers.findById(1L)).thenReturn(Optional.of(offer));
         when(offers.findByIdForUpdate(1L)).thenReturn(Optional.of(offer));
         when(trips.findByIdForUpdate(55L)).thenReturn(Optional.of(trip));
@@ -107,6 +107,7 @@ class TripOfferDeliveryServiceTest {
         offer.setId(1L); offer.setTrip(trip); offer.setDriver(driver);
         offer.setStatus(TripDriverOfferStatus.PENDING_DELIVERY);
         offer.setExpiresAt(LocalDateTime.now().plusSeconds(15));
+        offer.setResponseExpiresAt(offer.getExpiresAt());
         when(offers.findById(1L)).thenReturn(Optional.of(offer));
         when(offers.findByIdForUpdate(1L)).thenReturn(Optional.of(offer));
         when(trips.findByIdForUpdate(55L)).thenReturn(Optional.of(trip));
@@ -117,5 +118,10 @@ class TripOfferDeliveryServiceTest {
         assertThat(offer.getStatus()).isEqualTo(TripDriverOfferStatus.CANCELLED);
         assertThat(offer.getDeliveryAttemptState()).isEqualTo("SKIPPED_CLOSED");
         verify(offers).save(offer);
+    }
+
+    private static OrderPushDeliveryOutcome success() {
+        return new OrderPushDeliveryOutcome(OrderPushDeliveryOutcomeCategory.SUCCESS,
+                null, "provider-message-1", "fingerprint", true, true);
     }
 }

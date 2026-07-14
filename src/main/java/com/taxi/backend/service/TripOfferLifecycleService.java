@@ -12,6 +12,7 @@ import com.taxi.backend.repository.TripRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,12 +20,14 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -40,6 +43,9 @@ public class TripOfferLifecycleService {
             TripDriverOfferStatus.PENDING_DELIVERY,
             TripDriverOfferStatus.ACTIVE,
             TripDriverOfferStatus.ACKNOWLEDGED);
+    private static final Set<String> AUTOMATIC_ADVANCEMENT_BLOCKED_OUTCOMES = Set.of(
+            OrderPushDeliveryOutcomeCategory.GLOBAL_CONFIGURATION_FAILURE.name(),
+            OrderPushDeliveryOutcomeCategory.UNSUPPORTED_DELIVERY_PATH.name());
 
     private final TripRepository tripRepository;
     private final DriverRepository driverRepository;
@@ -50,19 +56,34 @@ public class TripOfferLifecycleService {
     @Value("${matching.radius-km:5.0}")
     private double matchingRadiusKm;
 
-    @Value("${app.dispatch.offer-ttl-seconds:15}")
-    private long offerTtlSeconds;
+    private final DispatchOfferTimingProperties timing;
+    private final Clock clock;
 
+    /** Narrow test compatibility constructor; production injects the shared timing and Clock. */
+    public TripOfferLifecycleService(TripRepository tripRepository,
+                                      DriverRepository driverRepository,
+                                      TripDriverOfferRepository offerRepository,
+                                      MatchingService matchingService,
+                                      TripOfferDeliveryService deliveryService) {
+        this(tripRepository, driverRepository, offerRepository, matchingService, deliveryService,
+                new DispatchOfferTimingProperties(), Clock.systemDefaultZone());
+    }
+
+    @Autowired
     public TripOfferLifecycleService(TripRepository tripRepository,
                                      DriverRepository driverRepository,
                                      TripDriverOfferRepository offerRepository,
                                      MatchingService matchingService,
-                                     TripOfferDeliveryService deliveryService) {
+                                     TripOfferDeliveryService deliveryService,
+                                     DispatchOfferTimingProperties timing,
+                                     Clock clock) {
         this.tripRepository = tripRepository;
         this.driverRepository = driverRepository;
         this.offerRepository = offerRepository;
         this.matchingService = matchingService;
         this.deliveryService = deliveryService;
+        this.timing = timing;
+        this.clock = clock;
     }
 
     /** Create exactly one offer for the highest-ranked eligible, not-yet-offered driver. */
@@ -109,7 +130,7 @@ public class TripOfferLifecycleService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Taklif topilmadi"));
         if (!LIVE.contains(offer.getStatus())) return;
         offer.setStatus(TripDriverOfferStatus.ACCEPTED);
-        offer.setClosedAt(LocalDateTime.now());
+        offer.setClosedAt(now());
         offerRepository.save(offer);
     }
 
@@ -137,7 +158,7 @@ public class TripOfferLifecycleService {
             if (offer.getStatus() == TripDriverOfferStatus.PENDING_DELIVERY
                     || offer.getStatus() == TripDriverOfferStatus.ACTIVE) {
                 offer.setStatus(TripDriverOfferStatus.ACKNOWLEDGED);
-                offer.setAcknowledgedAt(LocalDateTime.now());
+                offer.setAcknowledgedAt(now());
                 offerRepository.save(offer);
             }
             return true;
@@ -148,7 +169,7 @@ public class TripOfferLifecycleService {
 
     @Transactional(readOnly = true)
     public Set<Long> liveOfferTripIdsForDriver(Long driverId) {
-        return new HashSet<>(offerRepository.findLiveTripIdsByDriverId(driverId, LIVE, LocalDateTime.now()));
+        return new HashSet<>(offerRepository.findLiveTripIdsByDriverId(driverId, LIVE, now()));
     }
 
     @Transactional
@@ -164,7 +185,10 @@ public class TripOfferLifecycleService {
         Trip trip = tripRepository.findByIdForUpdate(snapshot.getTrip().getId()).orElse(null);
         if (trip == null) return;
         TripDriverOffer offer = offerRepository.findByIdForUpdate(offerId).orElse(null);
-        if (offer == null || !LIVE.contains(offer.getStatus()) || offer.getExpiresAt().isAfter(LocalDateTime.now())) return;
+        if (offer == null || !LIVE.contains(offer.getStatus()) || offer.getResponseExpiresAt() == null
+                || offer.getResponseExpiresAt().isAfter(now())) return;
+        if (offer.getLastDeliveryOutcome() != null
+                && AUTOMATIC_ADVANCEMENT_BLOCKED_OUTCOMES.contains(offer.getLastDeliveryOutcome())) return;
         close(offer, TripDriverOfferStatus.EXPIRED);
         if (trip.getStatus() == TripStatus.SEARCHING && trip.getDriver() == null) {
             createNextRankedOffer(trip);
@@ -173,13 +197,13 @@ public class TripOfferLifecycleService {
 
     @Transactional(readOnly = true)
     public List<Long> expiredLiveOfferIds() {
-        return offerRepository.findExpiredLiveOfferIds(LIVE, LocalDateTime.now());
+        return offerRepository.findExpiredLiveOfferIds(LIVE, AUTOMATIC_ADVANCEMENT_BLOCKED_OUTCOMES, now());
     }
 
     /** A restart can leave a durable offer queued but undelivered; retry its same owner only. */
     @Transactional(readOnly = true)
     public void recoverPendingOfferDeliveries() {
-        for (Long offerId : offerRepository.findPendingDeliveryOfferIds(LocalDateTime.now())) {
+        for (Long offerId : offerRepository.findPendingDeliveryOfferIds(now())) {
             deliveryService.deliverOfferAsync(offerId);
         }
     }
@@ -229,7 +253,7 @@ public class TripOfferLifecycleService {
     }
 
     private TripDriverOffer createOffer(Trip trip, Driver driver, int rank, Double distanceKm) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = now();
         TripDriverOffer offer = new TripDriverOffer();
         offer.setTrip(trip);
         offer.setDriver(driver);
@@ -238,10 +262,10 @@ public class TripOfferLifecycleService {
         offer.setDistanceKm(distanceKm);
         offer.setStatus(TripDriverOfferStatus.PENDING_DELIVERY);
         offer.setOfferedAt(now);
-        offer.setExpiresAt(now.plusSeconds(offerTtlSeconds));
         offer.setCreatedAt(now);
         offer.setUpdatedAt(now);
         offer.setDeliveryAttemptState("NOT_QUEUED");
+        offer.setDeliveryAttemptCount(0);
         TripDriverOffer saved = offerRepository.saveAndFlush(offer);
 
         // Legacy column remains a single-current-owner compatibility mirror; it no longer means fan-out.
@@ -270,7 +294,7 @@ public class TripOfferLifecycleService {
 
     private void close(TripDriverOffer offer, TripDriverOfferStatus terminalStatus) {
         offer.setStatus(terminalStatus);
-        offer.setClosedAt(LocalDateTime.now());
+        offer.setClosedAt(now());
         offerRepository.save(offer);
     }
 
@@ -278,7 +302,7 @@ public class TripOfferLifecycleService {
         if (!offer.getDriver().getId().equals(driverId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Bu buyurtma sizga taklif qilinmagan");
         }
-        if (!offer.getExpiresAt().isAfter(LocalDateTime.now())) {
+        if (offer.getResponseExpiresAt() != null && !offer.getResponseExpiresAt().isAfter(now())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Buyurtma taklifi muddati tugagan");
         }
     }
@@ -294,5 +318,35 @@ public class TripOfferLifecycleService {
             return;
         }
         deliveryService.deliverOfferAsync(offerId);
+    }
+
+    /**
+     * Only a typed UNREGISTERED outcome whose recipient is still current may advance one rank.
+     * The lock order remains trip -> offer and a duplicate result becomes a no-op.
+     */
+    @Transactional
+    public void handlePermanentRecipientFailure(Long offerId, OrderPushDeliveryOutcome outcome) {
+        if (outcome == null || !outcome.isPermanentRecipientFailure() || !outcome.recipientStillCurrent()) return;
+        TripDriverOffer snapshot = offerRepository.findById(offerId).orElse(null);
+        if (snapshot == null) return;
+        Trip trip = tripRepository.findByIdForUpdate(snapshot.getTrip().getId()).orElse(null);
+        TripDriverOffer offer = offerRepository.findByIdForUpdate(offerId).orElse(null);
+        if (trip == null || offer == null || trip.getStatus() != TripStatus.SEARCHING || trip.getDriver() != null
+                || !LIVE.contains(offer.getStatus())
+                || !Objects.equals(offer.getDeliveryRecipientFingerprint(), outcome.recipientFingerprint())) {
+            return;
+        }
+        offer.setStatus(TripDriverOfferStatus.DELIVERY_FAILED);
+        offer.setDeliveryAttemptState("PERMANENT_RECIPIENT_FAILURE");
+        offer.setLastDeliveryOutcome(outcome.category().name());
+        offer.setDeliveryError(outcome.providerCode());
+        offer.setClosedAt(now());
+        offer.setUpdatedAt(now());
+        offerRepository.save(offer);
+        createNextRankedOffer(trip);
+    }
+
+    private LocalDateTime now() {
+        return LocalDateTime.now(clock);
     }
 }

@@ -32,16 +32,21 @@ public interface TripDriverOfferRepository extends JpaRepository<TripDriverOffer
     int findMaxGenerationByTripId(@Param("tripId") Long tripId);
 
     @Query("SELECT o.trip.id FROM TripDriverOffer o WHERE o.driver.id = :driverId "
-            + "AND o.status IN :liveStatuses AND o.expiresAt > :now")
+            + "AND o.status IN :liveStatuses "
+            + "AND (o.responseExpiresAt IS NULL OR o.responseExpiresAt > :now)")
     List<Long> findLiveTripIdsByDriverId(@Param("driverId") Long driverId,
                                          @Param("liveStatuses") Collection<TripDriverOfferStatus> liveStatuses,
                                          @Param("now") LocalDateTime now);
 
-    @Query("SELECT o.id FROM TripDriverOffer o WHERE o.status IN :liveStatuses AND o.expiresAt <= :now")
+    @Query("SELECT o.id FROM TripDriverOffer o WHERE o.status IN :liveStatuses "
+            + "AND o.responseExpiresAt <= :now "
+            + "AND (o.lastDeliveryOutcome IS NULL OR o.lastDeliveryOutcome NOT IN :blockedOutcomes)")
     List<Long> findExpiredLiveOfferIds(@Param("liveStatuses") Collection<TripDriverOfferStatus> liveStatuses,
+                                       @Param("blockedOutcomes") Collection<String> blockedOutcomes,
                                        @Param("now") LocalDateTime now);
 
     @Query("SELECT o.id FROM TripDriverOffer o WHERE o.status = com.taxi.backend.enums.TripDriverOfferStatus.PENDING_DELIVERY "
-            + "AND o.expiresAt > :now")
+            + "AND (o.responseExpiresAt IS NULL OR o.responseExpiresAt > :now) "
+            + "AND (o.deliveryAttemptCount = 0 OR o.nextDeliveryAttemptAt <= :now)")
     List<Long> findPendingDeliveryOfferIds(@Param("now") LocalDateTime now);
 }

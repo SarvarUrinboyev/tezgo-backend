@@ -54,7 +54,6 @@ class TripNotificationHelperSequentialDispatchRegressionTest {
         lifecycle = new TripOfferLifecycleService(tripRepository, driverRepository, offerRepository,
                 matchingService, deliveryService);
         ReflectionTestUtils.setField(lifecycle, "matchingRadiusKm", 5.0d);
-        ReflectionTestUtils.setField(lifecycle, "offerTtlSeconds", 15L);
         trip = trip(704L);
         org.mockito.Mockito.lenient().when(tripRepository.findByIdForUpdate(704L)).thenReturn(Optional.of(trip));
         org.mockito.Mockito.lenient().when(offerRepository.findLiveByTripIdForUpdate(anyLong(), any())).thenReturn(List.of());
@@ -212,6 +211,7 @@ class TripNotificationHelperSequentialDispatchRegressionTest {
         offer.setCandidateRank(1);
         offer.setStatus(status);
         offer.setExpiresAt(expiresAt);
+        offer.setResponseExpiresAt(expiresAt);
         return offer;
     }
 

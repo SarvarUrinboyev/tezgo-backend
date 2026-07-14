@@ -47,8 +47,11 @@ class TripDriverOfferPostgresConcurrencyTest {
                     + "id BIGSERIAL PRIMARY KEY, version BIGINT, trip_id BIGINT NOT NULL REFERENCES trips(id), "
                     + "driver_id BIGINT NOT NULL REFERENCES drivers(id), generation INTEGER NOT NULL, "
                     + "candidate_rank INTEGER NOT NULL, distance_km DOUBLE PRECISION, status VARCHAR(32) NOT NULL, "
-                    + "offered_at TIMESTAMP NOT NULL, expires_at TIMESTAMP NOT NULL, acknowledged_at TIMESTAMP, "
+                    + "offered_at TIMESTAMP NOT NULL, expires_at TIMESTAMP, first_delivery_attempt_at TIMESTAMP, "
+                    + "provider_accepted_at TIMESTAMP, response_expires_at TIMESTAMP, acknowledged_at TIMESTAMP, "
                     + "closed_at TIMESTAMP, delivery_attempt_state VARCHAR(32) NOT NULL, delivery_error VARCHAR(500), "
+                    + "delivery_attempt_count INTEGER NOT NULL DEFAULT 0, next_delivery_attempt_at TIMESTAMP, "
+                    + "last_delivery_outcome VARCHAR(40), delivery_recipient_fingerprint VARCHAR(64), "
                     + "created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL, "
                     + "CONSTRAINT uq_trip_driver_offers_trip_generation UNIQUE (trip_id, generation), "
                     + "CONSTRAINT uq_trip_driver_offers_trip_driver UNIQUE (trip_id, driver_id))");
@@ -65,7 +68,7 @@ class TripDriverOfferPostgresConcurrencyTest {
         }
     }
 
-    @RepeatedTest(10)
+    @RepeatedTest(20)
     @Timeout(60)
     void parallelLiveOfferInsertsAdmitExactlyOneWinner() throws Exception {
         List<InsertResult> results = runParallel();
