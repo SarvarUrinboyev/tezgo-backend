@@ -1,7 +1,9 @@
 package com.taxi.backend.repository;
 
 import com.taxi.backend.model.ClickTransaction;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -20,6 +22,12 @@ import java.util.Optional;
 public interface ClickTransactionRepository extends JpaRepository<ClickTransaction, Long> {
 
     Optional<ClickTransaction> findByClickTransId(String clickTransId);
+
+    Optional<ClickTransaction> findByClickPaydocId(String clickPaydocId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT t FROM ClickTransaction t WHERE t.clickTransId = :clickTransId")
+    Optional<ClickTransaction> findByClickTransIdForUpdate(@Param("clickTransId") String clickTransId);
 
     /**
      * Ledgerga PREPARED satr qo'shadi; agar click_trans_id allaqachon bo'lsa — NO-OP
@@ -40,6 +48,23 @@ public interface ClickTransactionRepository extends JpaRepository<ClickTransacti
                        @Param("action") int action,
                        @Param("merchantPrepareId") String merchantPrepareId);
 
+    /** Durable catalog intent.  merchant_trans_id is the reusable account, never a unique order key. */
+    @Modifying
+    @Query(nativeQuery = true, value =
+            "INSERT INTO click_transactions " +
+            "(click_trans_id, click_paydoc_id, merchant_trans_id, driver_id, amount, action, status, " +
+            " merchant_prepare_id, payment_source, catalog_account, created_at) " +
+            "VALUES (:clickTransId, :clickPaydocId, :merchantTransId, :driverId, :amount, 0, 'PREPARED', " +
+            " :merchantPrepareId, 'CLICK_SUPERAPP', :catalogAccount, now()) " +
+            "ON CONFLICT DO NOTHING")
+    int insertCatalogIfAbsent(@Param("clickTransId") String clickTransId,
+                              @Param("clickPaydocId") String clickPaydocId,
+                              @Param("merchantTransId") String merchantTransId,
+                              @Param("driverId") Long driverId,
+                              @Param("amount") long amount,
+                              @Param("merchantPrepareId") String merchantPrepareId,
+                              @Param("catalogAccount") String catalogAccount);
+
     /**
      * ATOMIK CLAIM: statusni CONFIRMED ga o'tkazadi, faqat agar hali CONFIRMED bo'lmagan bo'lsa.
      * Qaytaradi: 1 = shu chaqiruvchi g'olib (kreditlashi SHART), 0 = allaqachon CONFIRMED
@@ -54,10 +79,27 @@ public interface ClickTransactionRepository extends JpaRepository<ClickTransacti
                                 @Param("merchantTransId") String merchantTransId,
                                 @Param("confirmId") String confirmId);
 
+    @Modifying
+    @Query(nativeQuery = true, value =
+            "UPDATE click_transactions " +
+            "SET status='CONFIRMED', merchant_confirm_id=:confirmId, action=1, error=0, completed_at=now() " +
+            "WHERE click_trans_id=:clickTransId AND merchant_trans_id=:merchantTransId " +
+            "AND merchant_prepare_id=:merchantPrepareId AND payment_source='CLICK_SUPERAPP' AND status='PREPARED'")
+    int markCatalogConfirmedIfPrepared(@Param("clickTransId") String clickTransId,
+                                       @Param("merchantTransId") String merchantTransId,
+                                       @Param("merchantPrepareId") String merchantPrepareId,
+                                       @Param("confirmId") String confirmId);
+
     /** Bekor qilingan/muvaffaqiyatsiz Click COMPLETE (error != 0) — CONFIRMED bo'lmagan satrni CANCELLED qiladi. */
     @Modifying
     @Query(nativeQuery = true, value =
             "UPDATE click_transactions SET status='CANCELLED', error=:error, completed_at=now() " +
             "WHERE click_trans_id=:clickTransId AND status <> 'CONFIRMED'")
     int markCancelled(@Param("clickTransId") String clickTransId, @Param("error") int error);
+
+    @Modifying
+    @Query(nativeQuery = true, value =
+            "UPDATE click_transactions SET status='CANCELLED', error=:error, completed_at=now() " +
+            "WHERE click_trans_id=:clickTransId AND payment_source='CLICK_SUPERAPP' AND status <> 'CONFIRMED'")
+    int markCatalogCancelled(@Param("clickTransId") String clickTransId, @Param("error") int error);
 }

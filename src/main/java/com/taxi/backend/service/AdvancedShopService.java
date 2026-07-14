@@ -8,7 +8,6 @@ import com.taxi.backend.repository.ClickShopTransactionRepository;
 import com.taxi.backend.repository.DriverRepository;
 import com.taxi.backend.repository.TransactionRepository;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -63,7 +62,11 @@ import java.util.logging.Logger;
  * -3 Action not found, -4 Already paid, -5 User does not exist, -6 Transaction not found,
  * -7 Failed to update user, -8 Error in request from Click, -9 Transaction cancelled.
  */
-@Service
+/**
+ * Archived legacy implementation retained only for source-history tests.
+ * It is intentionally not a Spring bean and has no HTTP route; catalog money
+ * callbacks use ClickCatalogPaymentService through the canonical Merchant API.
+ */
 public class AdvancedShopService {
 
     private static final Logger log = Logger.getLogger(AdvancedShopService.class.getName());

@@ -1,14 +1,12 @@
 package com.taxi.backend.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.taxi.backend.enums.TransactionType;
 import com.taxi.backend.model.ClickPaymentOrder;
-import com.taxi.backend.model.Driver;
-import com.taxi.backend.model.Transaction;
 import com.taxi.backend.repository.ClickPaymentOrderRepository;
 import com.taxi.backend.repository.ClickTransactionRepository;
 import com.taxi.backend.repository.DriverRepository;
 import com.taxi.backend.repository.TransactionRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -64,6 +62,8 @@ public class PaymentService {
     private final TransactionRepository transactionRepository;
     private final ClickTransactionRepository clickTxRepository;
     private final ClickPaymentOrderRepository clickOrderRepository;
+    private final ClickWalletCreditService walletCreditService;
+    private final ClickCatalogPaymentService clickCatalogPaymentService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // Redis ishlamasa, orderlarni in-memory saqlash (24 soat emas, restart gacha)
@@ -75,11 +75,25 @@ public class PaymentService {
                            TransactionRepository transactionRepository,
                            ClickTransactionRepository clickTxRepository,
                            ClickPaymentOrderRepository clickOrderRepository) {
+        this(redis, driverRepository, transactionRepository, clickTxRepository, clickOrderRepository,
+                new ClickWalletCreditService(driverRepository, transactionRepository), null);
+    }
+
+    @Autowired
+    public PaymentService(StringRedisTemplate redis,
+                           DriverRepository driverRepository,
+                           TransactionRepository transactionRepository,
+                           ClickTransactionRepository clickTxRepository,
+                           ClickPaymentOrderRepository clickOrderRepository,
+                           ClickWalletCreditService walletCreditService,
+                           ClickCatalogPaymentService clickCatalogPaymentService) {
         this.redis = redis;
         this.driverRepository = driverRepository;
         this.transactionRepository = transactionRepository;
         this.clickTxRepository = clickTxRepository;
         this.clickOrderRepository = clickOrderRepository;
+        this.walletCreditService = walletCreditService;
+        this.clickCatalogPaymentService = clickCatalogPaymentService;
     }
 
     // ─────────────────────────────────────────────
@@ -433,6 +447,14 @@ public class PaymentService {
             return clickError(-1, "Sign tekshiruvi xato", clickTransId, orderId);
         }
 
+        ClickMerchantTransIdType transactionType = ClickMerchantTransIdType.classify(orderId);
+        if (transactionType == ClickMerchantTransIdType.CLICK_CATALOG_ACCOUNT) {
+            return catalogPaymentServiceOrFail(clickTransId, orderId).prepare(params);
+        }
+        if (transactionType != ClickMerchantTransIdType.APP_ORDER_REFERENCE) {
+            return clickError(-5, "Order topilmadi", clickTransId, orderId);
+        }
+
         ClickPaymentOrder order = findClickOrderForUpdate(orderId);
         if (order == null) {
             return clickError(-5, "Order topilmadi", clickTransId, orderId);
@@ -509,6 +531,14 @@ public class PaymentService {
         if (!constantTimeEquals(mySign, signString)) {
             log.warning("[CLICK][SIGNATURE_INVALID] action=complete trans=" + safeId(clickTransId));
             return clickError(-1, "Sign tekshiruvi xato", clickTransId, orderId);
+        }
+
+        ClickMerchantTransIdType transactionType = ClickMerchantTransIdType.classify(orderId);
+        if (transactionType == ClickMerchantTransIdType.CLICK_CATALOG_ACCOUNT) {
+            return catalogPaymentServiceOrFail(clickTransId, orderId).complete(params);
+        }
+        if (transactionType != ClickMerchantTransIdType.APP_ORDER_REFERENCE) {
+            return clickError(-5, "Order topilmadi", clickTransId, orderId);
         }
 
         ClickPaymentOrder order = findClickOrderForUpdate(orderId);
@@ -596,27 +626,20 @@ public class PaymentService {
      */
     @Transactional
     public void creditDriverBalance(Long driverId, Long amount, String description) {
-        if (driverId == null || amount == null || amount <= 0) {
+        if (amount == null) {
             throw new IllegalArgumentException("Click payment amount must be positive");
         }
-        Driver driver = driverRepository.findByIdForUpdate(driverId)
-                .orElseThrow(() -> new IllegalStateException("Click payment driver not found"));
-        if (driver.getBalance() == null) {
-            throw new IllegalStateException("Click payment driver balance is null");
-        }
-        long balanceBefore = driver.getBalance();
-        long balanceAfter = Math.addExact(balanceBefore, amount);
-        driver.setBalance(balanceAfter);
-
-        Transaction tx = new Transaction();
-        tx.setDriver(driver);
-        tx.setType(TransactionType.TOPUP);
-        tx.setAmount(amount);
-        tx.setBalanceBefore(balanceBefore);
-        tx.setBalanceAfter(balanceAfter);
-        tx.setDescription(description);
-        transactionRepository.save(tx);
+        walletCreditService.credit(driverId, amount, description);
         log.info("Balance credited: driverId=" + driverId + " +" + amount + " tiyin");
+    }
+
+    private ClickCatalogPaymentService catalogPaymentServiceOrFail(String clickTransId, String merchantTransId) {
+        if (clickCatalogPaymentService == null) {
+            // Compatibility constructor is only used by legacy unit tests.  A real
+            // Spring runtime always injects the catalog service; fail closed otherwise.
+            throw new IllegalStateException("Click catalog payment service is not configured");
+        }
+        return clickCatalogPaymentService;
     }
 
     // ─────────────────────────────────────────────

@@ -53,6 +53,14 @@ public class ClickTransaction {
     @Column(name = "merchant_confirm_id", length = 64)
     private String merchantConfirmId;
 
+    /** APP_LINK for the existing driver-app order flow; CLICK_SUPERAPP for catalog payments. */
+    @Column(name = "payment_source", nullable = false, length = 32)
+    private String paymentSource = "APP_LINK";
+
+    /** Normalized reusable catalog account, deliberately separate from the app order reference. */
+    @Column(name = "catalog_account", length = 20)
+    private String catalogAccount;
+
     @Column(nullable = false)
     private Integer error = 0;
 
@@ -94,6 +102,12 @@ public class ClickTransaction {
 
     public String getMerchantConfirmId() { return merchantConfirmId; }
     public void setMerchantConfirmId(String merchantConfirmId) { this.merchantConfirmId = merchantConfirmId; }
+
+    public String getPaymentSource() { return paymentSource; }
+    public void setPaymentSource(String paymentSource) { this.paymentSource = paymentSource; }
+
+    public String getCatalogAccount() { return catalogAccount; }
+    public void setCatalogAccount(String catalogAccount) { this.catalogAccount = catalogAccount; }
 
     public Integer getError() { return error; }
     public void setError(Integer error) { this.error = error; }
