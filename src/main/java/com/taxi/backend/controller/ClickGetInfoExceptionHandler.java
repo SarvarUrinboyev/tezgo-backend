@@ -13,7 +13,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.Map;
 
-/** Keeps malformed GetInfo requests out of the application's generic error schema. */
+/**
+ * Keeps malformed GetInfo requests out of the application's generic error
+ * schema. These are local defensive transport fallbacks, not the confirmed
+ * HTTP-200 business-error contract.
+ */
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice(assignableTypes = AdvancedShopController.class)
 public class ClickGetInfoExceptionHandler {

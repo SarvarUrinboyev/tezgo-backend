@@ -10,7 +10,11 @@ public class ClickGetInfoProperties {
     @Value("${click.getinfo.enabled:false}")
     private boolean enabled;
 
-    /** Explicit owner acknowledgement of Click's still-external auth contract. */
+    /**
+     * Explicit owner acknowledgement that approved Basic Auth material is
+     * installed. CLICK supports Basic Auth, but no credential is generated or
+     * transmitted by this application and rejection semantics remain pending.
+     */
     @Value("${click.getinfo.auth-ready:false}")
     private boolean authReady;
 

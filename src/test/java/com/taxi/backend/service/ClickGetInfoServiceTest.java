@@ -13,10 +13,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
 class ClickGetInfoServiceTest {
@@ -62,22 +61,27 @@ class ClickGetInfoServiceTest {
 
     @Test
     void malformedUnknownInactiveWrongServiceAndWrongActionAreRejected() {
-        assertEquals(-8, service.handle(request("TZ-X"), basicAuth(), "10.0.0.1").get("error"));
+        assertBusinessError(service.handle(request("TZ-X"), basicAuth(), "10.0.0.1"),
+                ClickGetInfoError.MALFORMED_ACCOUNT);
 
         when(driverRepository.findByDriverCodeWithUser("TZ-9999")).thenReturn(Optional.empty());
-        assertEquals(-5, service.handle(request("TZ-9999"), basicAuth(), "10.0.0.2").get("error"));
+        assertBusinessError(service.handle(request("TZ-9999"), basicAuth(), "10.0.0.2"),
+                ClickGetInfoError.ACCOUNT_NOT_FOUND);
 
         when(driverRepository.findByDriverCodeWithUser("TZ-0006"))
                 .thenReturn(Optional.of(inactiveDriver()));
-        assertEquals(-5, service.handle(request("TZ-0006"), basicAuth(), "10.0.0.3").get("error"));
+        assertBusinessError(service.handle(request("TZ-0006"), basicAuth(), "10.0.0.3"),
+                ClickGetInfoError.ACCOUNT_INACTIVE);
 
         ClickGetInfoRequest wrongService = request("TZ-0005");
         wrongService.setServiceId("999");
-        assertEquals(-8, service.handle(wrongService, basicAuth(), "10.0.0.4").get("error"));
+        assertBusinessError(service.handle(wrongService, basicAuth(), "10.0.0.4"),
+                ClickGetInfoError.INVALID_SERVICE_ID);
 
         ClickGetInfoRequest wrongAction = request("TZ-0005");
         wrongAction.setAction(1);
-        assertEquals(-3, service.handle(wrongAction, basicAuth(), "10.0.0.5").get("error"));
+        assertBusinessError(service.handle(wrongAction, basicAuth(), "10.0.0.5"),
+                ClickGetInfoError.INVALID_ACTION);
     }
 
     @Test
@@ -106,17 +110,26 @@ class ClickGetInfoServiceTest {
     @Test
     void endpointGateAndRateLimitRemainFailClosed() {
         ReflectionTestUtils.setField(properties, "enabled", false);
-        assertEquals("GETINFO_NOT_ENABLED",
-                service.handle(request("TZ-0005"), basicAuth(), "10.0.0.1").get("error_note"));
+        assertBusinessError(service.handle(request("TZ-0005"), basicAuth(), "10.0.0.1"),
+                ClickGetInfoError.CATALOG_DISABLED);
 
         ReflectionTestUtils.setField(properties, "enabled", true);
         ReflectionTestUtils.setField(properties, "rateLimitMaxRequests", 1);
         when(driverRepository.findByDriverCodeWithUser("TZ-0005"))
                 .thenReturn(Optional.of(activeDriver("A")));
         assertEquals(0, service.handle(request("TZ-0005"), basicAuth(), "10.0.0.9").get("error"));
-        assertEquals("RATE_LIMITED",
-                service.handle(request("TZ-0005"), basicAuth(), "10.0.0.9").get("error_note"));
+        assertBusinessError(service.handle(request("TZ-0005"), basicAuth(), "10.0.0.9"),
+                ClickGetInfoError.RATE_LIMITED);
         verify(driverRepository, times(1)).findByDriverCodeWithUser("TZ-0005");
+    }
+
+    @Test
+    void temporaryBusinessFailureUsesOnlyTheConfirmedBusinessErrorSchema() {
+        when(driverRepository.findByDriverCodeWithUser("TZ-0005"))
+                .thenThrow(new IllegalStateException("simulated lookup failure"));
+
+        assertBusinessError(service.handle(request("TZ-0005"), basicAuth(), "10.0.0.1"),
+                ClickGetInfoError.TEMPORARY_ERROR);
     }
 
     @Test
@@ -195,5 +208,11 @@ class ClickGetInfoServiceTest {
         Driver driver = activeDriver("Blocked");
         driver.setStatus(DriverStatus.BLOCKED);
         return driver;
+    }
+
+    private static void assertBusinessError(Map<String, Object> response, ClickGetInfoError expected) {
+        assertEquals(expected.code(), response.get("error"));
+        assertEquals(expected.note(), response.get("error_note"));
+        assertEquals(Set.of("error", "error_note"), response.keySet());
     }
 }

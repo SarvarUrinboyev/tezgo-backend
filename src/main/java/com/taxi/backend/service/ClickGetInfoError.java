@@ -1,6 +1,10 @@
 package com.taxi.backend.service;
 
-/** TEZGO's proposed GetInfo response codes, pending Click example acceptance. */
+/**
+ * GetInfo response values. Click has confirmed HTTP 200 plus error/error_note
+ * for business outcomes; exact transport and authentication rejection behavior
+ * is still pending external contract acceptance.
+ */
 public enum ClickGetInfoError {
     SUCCESS(0, "Success"),
     INVALID_ACTION(-3, "INVALID_ACTION"),

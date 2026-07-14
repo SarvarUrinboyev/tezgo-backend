@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Map;
+
 /**
  * Click SuperApp's strictly read-only account lookup.
  *
@@ -31,9 +33,12 @@ public class AdvancedShopController {
 
     @PostMapping(value = "/getinfo", consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<?> getinfo(@RequestBody ClickGetInfoRequest body,
-                                     @RequestHeader(value = "Authorization", required = false) String authorization,
-                                     HttpServletRequest request) {
+    public ResponseEntity<Map<String, Object>> getinfo(@RequestBody ClickGetInfoRequest body,
+                                                        @RequestHeader(value = "Authorization", required = false) String authorization,
+                                                        HttpServletRequest request) {
+        // Click has confirmed that business-level GetInfo failures use HTTP 200
+        // with error/error_note. Transport and authentication rejection details
+        // remain an external contract-acceptance gate while catalog mode is OFF.
         return ResponseEntity.ok(clickGetInfoService.handle(body, authorization, request.getRemoteAddr()));
     }
 }

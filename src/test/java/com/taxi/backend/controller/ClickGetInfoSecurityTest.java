@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.taxi.backend.security.JwtFilter;
 import com.taxi.backend.security.JwtService;
 import com.taxi.backend.security.SecurityConfig;
+import com.taxi.backend.service.ClickGetInfoError;
+import com.taxi.backend.service.ClickGetInfoResponse;
 import com.taxi.backend.service.ClickGetInfoService;
 import com.taxi.backend.service.TokenBlacklistService;
 import org.junit.jupiter.api.Test;
@@ -19,6 +21,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.util.Map;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -61,7 +64,31 @@ class ClickGetInfoSecurityTest {
     }
 
     @Test
-    void malformedWrongMediaAndOversizedBodiesUseOnlyTheProtocolErrorSchema() throws Exception {
+    void confirmedBusinessFailuresReturnHttp200WithOnlyErrorAndErrorNote() throws Exception {
+        for (ClickGetInfoError error : List.of(
+                ClickGetInfoError.ACCOUNT_NOT_FOUND,
+                ClickGetInfoError.MALFORMED_ACCOUNT,
+                ClickGetInfoError.CATALOG_DISABLED,
+                ClickGetInfoError.RATE_LIMITED,
+                ClickGetInfoError.ACCOUNT_INACTIVE,
+                ClickGetInfoError.TEMPORARY_ERROR)) {
+            when(clickGetInfoService.handle(any(), any(), any()))
+                    .thenReturn(ClickGetInfoResponse.error(error));
+
+            mockMvc.perform(post("/api/payment/click-shop/getinfo")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"action\":0,\"service_id\":\"105926\",\"params\":{\"account\":\"TZ-0005\"}}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.error").value(error.code()))
+                    .andExpect(jsonPath("$.error_note").value(error.note()))
+                    .andExpect(jsonPath("$.params").doesNotExist());
+        }
+
+        verify(clickGetInfoService, org.mockito.Mockito.times(6)).handle(any(), any(), any());
+    }
+
+    @Test
+    void localTransportFallbacksUseOnlyTheProtocolErrorSchemaPendingClickAcceptance() throws Exception {
         mockMvc.perform(post("/api/payment/click-shop/getinfo")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{not-json"))

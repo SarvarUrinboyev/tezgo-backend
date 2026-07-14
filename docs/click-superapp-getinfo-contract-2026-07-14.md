@@ -13,7 +13,7 @@ mode is `OFF`; this document is not deployment authorization.
 | Method | `POST` |
 | Content-Type | `application/json` |
 | Service ID | `105926` |
-| Request authentication | Optional Basic Auth capability. The production readiness gate stays closed as `GETINFO_AUTH_NOT_CONFIGURED` until Click confirms its exact rule and the owner sets `CLICK_GETINFO_AUTH_READY=true`; if Basic Auth is required, its credentials must also be installed. |
+| Request authentication | CLICK confirms that Basic Auth is supported. No credential is generated, stored in this document, or sent by this work; the production readiness gate remains closed with `CLICK_GETINFO_AUTH_READY=false` until the owner installs approved material and opens an activation window. |
 | Returned parameter | `params.full_name` only |
 
 ## Master catalog mode
@@ -60,27 +60,44 @@ curl --request POST \
 }
 ```
 
-## Error examples
+## Confirmed business-error envelope
 
-The error-note labels and codes below are TEZGO's proposed protocol responses
-for Click review. They must be accepted by Click before the route is enabled.
+CLICK has confirmed that business-level GetInfo failures return **HTTP 200**
+and contain **both** `error` and `error_note`. The route stays disabled while
+the catalog mode is `OFF`; this is not an authorization to configure the Click
+cabinet, send credentials, send `READY`, or make a payment.
+
+The current numeric error values and note labels below are TEZGO's local
+implementation values. CLICK has confirmed the HTTP-200 envelope, not yet an
+individual numeric-code catalogue. The implementation never adds `params` to a
+business-error response.
 
 | Case | Request fragment | Response example |
 | --- | --- | --- |
-| Unknown account | `"account":"TZ-9999"` | `{"error":-5,"error_note":"ACCOUNT_NOT_FOUND"}` |
-| Malformed account | `"account":"9999"` | `{"error":-8,"error_note":"MALFORMED_ACCOUNT"}` |
-| Blocked/inactive account | `"account":"TZ-0005"` | `{"error":-5,"error_note":"ACCOUNT_NOT_ELIGIBLE"}` |
-| Wrong service ID | `"service_id":105927` | `{"error":-8,"error_note":"INVALID_SERVICE_ID"}` |
-| Invalid action | `"action":1` | `{"error":-3,"error_note":"INVALID_ACTION"}` |
-| Missing params/account | no `params.account` | `{"error":-8,"error_note":"MALFORMED_ACCOUNT"}` |
-| Missing/invalid Basic Auth when enabled | absent or invalid Authorization header | `{"error":-1,"error_note":"UNAUTHORIZED"}` |
-| Catalog mode or subordinate endpoint disabled | mode is not `ON`, or `CLICK_GETINFO_ENABLED=false` | `{"error":-1,"error_note":"GETINFO_NOT_ENABLED"}` |
-| Auth readiness not configured | `CLICK_GETINFO_AUTH_READY=false`, or Basic Auth enabled with blank credentials | `{"error":-1,"error_note":"GETINFO_AUTH_NOT_CONFIGURED"}` |
-| Low-volume rate limit | same direct trusted peer/account exceeds its configured window, or peer exceeds its higher source ceiling | `{"error":-8,"error_note":"RATE_LIMITED"}` |
-| Malformed JSON | invalid JSON body | HTTP `400`, `{"error":-8,"error_note":"MALFORMED_REQUEST"}` |
-| Wrong or missing media type | not JSON | HTTP `415`, `{"error":-8,"error_note":"MALFORMED_REQUEST"}` |
-| Oversized body | body declared above 4 KiB | HTTP `413`, `{"error":-8,"error_note":"MALFORMED_REQUEST"}` |
-| Temporary internal failure | safe internal lookup failure | `{"error":-7,"error_note":"TEMPORARY_ERROR"}` |
+| Unknown account | `"account":"TZ-9999"` | HTTP `200`, `{"error":-5,"error_note":"ACCOUNT_NOT_FOUND"}` |
+| Invalid account | `"account":"9999"` | HTTP `200`, `{"error":-8,"error_note":"MALFORMED_ACCOUNT"}` |
+| Blocked/inactive account | `"account":"TZ-0005"` | HTTP `200`, `{"error":-5,"error_note":"ACCOUNT_NOT_ELIGIBLE"}` |
+| Service disabled | catalog mode is not `ON`, or `CLICK_GETINFO_ENABLED=false` | HTTP `200`, `{"error":-1,"error_note":"GETINFO_NOT_ENABLED"}` |
+| Low-volume rate limit | same direct trusted peer/account exceeds its configured window, or peer exceeds its higher source ceiling | HTTP `200`, `{"error":-8,"error_note":"RATE_LIMITED"}` |
+| Temporary business failure | safe internal lookup failure | HTTP `200`, `{"error":-7,"error_note":"TEMPORARY_ERROR"}` |
+
+## Contract acceptance pending
+
+The following must not be represented as accepted CLICK behavior until support
+answers in writing. The implementation retains local defensive fallbacks for
+malformed/oversized requests, but their status codes are not an external
+contract claim and the endpoint remains disabled.
+
+| Pending item | Current position |
+| --- | --- |
+| Malformed or damaged JSON | **CONTRACT ACCEPTANCE PENDING** |
+| Incorrect or missing `Content-Type` | **CONTRACT ACCEPTANCE PENDING** |
+| Missing or invalid Basic Auth | **CONTRACT ACCEPTANCE PENDING**; Basic Auth support itself is confirmed, but rejection status/body semantics are not. |
+| Temporary-outage retry interval | **CONTRACT ACCEPTANCE PENDING**; a contractually appropriate business failure uses the confirmed HTTP-200 envelope above. |
+
+No real Basic Auth credential has been generated or transmitted. CLICK expects
+a sample GetInfo request after implementation; that sample is deferred until
+the pending acceptance items and owner authorization are present.
 
 The service never logs an Authorization header, password, driver full name, or
 the unmasked account value. Rate limiting uses a hash of the direct, trusted
@@ -112,21 +129,26 @@ of this integration and cannot credit a wallet.
 
 ## External acceptance and ingress validation plan
 
-The protocol error labels and numeric codes above are proposed values until
-Click confirms them. Before any cabinet change or deployment, obtain from Click
-in writing: GetInfo authentication/signature rule, the exact GetInfo response
-schema/error codes, and the catalog Prepare/Complete payload examples.
+Before any cabinet change or deployment, obtain from Click in writing: the
+pending malformed-input and Basic-Auth rejection semantics, temporary-outage
+retry behavior, the exact numeric error-code catalogue, and the catalog
+Prepare/Complete payload examples. Basic Auth support and the HTTP-200
+business-error envelope are confirmed, but do not open the activation gate.
 
 The production ingress validation must be read-only and use a synthetic or
 owner-approved account only:
 
-1. Verify `POST /api/payment/click-shop/getinfo` reaches the intended host over
-   TLS and returns only the protocol JSON schema for malformed media/body.
+1. Once CLICK accepts the pending transport contract, verify `POST
+   /api/payment/click-shop/getinfo` reaches the intended host over TLS and
+   returns its accepted schema for malformed media/body.
 2. Verify a valid authenticated GetInfo request reaches the service, returns
    only `params.full_name`, and makes no DB/Redis/ledger mutation.
 3. Verify the canonical `/api/payment/click/prepare` and `/complete` URLs stay
    unchanged and that legacy `/api/payment/click-shop/{prepare,complete}` stay
    denied.
-4. Keep catalog mode `OFF` and `CLICK_GETINFO_AUTH_READY=false` until Click's
+4. Send CLICK's requested sample GetInfo request only after the owner approves
+   its contents and the pending contract items are answered. Never include real
+   Basic Auth material in source control, a document, or a test fixture.
+5. Keep catalog mode `OFF` and `CLICK_GETINFO_AUTH_READY=false` until Click's
    written contract and the owner-approved activation window are both present.
    No real payment is part of this plan.
