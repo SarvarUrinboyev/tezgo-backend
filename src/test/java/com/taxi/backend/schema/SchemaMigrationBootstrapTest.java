@@ -2,6 +2,7 @@ package com.taxi.backend.schema;
 
 import com.taxi.backend.model.SystemSetting;
 import com.taxi.backend.model.OperatorTripIdempotency;
+import com.taxi.backend.model.ClickTransaction;
 import jakarta.persistence.Column;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
@@ -59,12 +60,15 @@ class SchemaMigrationBootstrapTest {
     private EntityManager em;
 
     @Test
-    void flywayChainAppliesFromScratch_throughV49() {
-        Object count = em.createNativeQuery(
+    void flywayChainAppliesFromScratch_throughV50_includingV49() {
+        assertEquals(1, ((Number) em.createNativeQuery(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '49' AND success = true")
-                .getSingleResult();
-        assertEquals(1, ((Number) count).intValue(),
-                "V49 toza bazada muvaffaqiyatli qo'llanishi kerak (zanjir V1..V49 buzilmagan)");
+                .getSingleResult()).intValue(),
+                "V49 toza bazada V50 dan oldin muvaffaqiyatli qo'llanishi kerak");
+        assertEquals(1, ((Number) em.createNativeQuery(
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version = '50' AND success = true")
+                .getSingleResult()).intValue(),
+                "V50 toza bazada muvaffaqiyatli qo'llanishi kerak (zanjir V1..V50 buzilmagan)");
     }
 
     @Test
@@ -112,5 +116,38 @@ class SchemaMigrationBootstrapTest {
                 .getSingleResult();
         assertNotNull(surge);
         assertEquals("false", surge.getValue(), "surge default OFF (V27 seed)");
+    }
+
+    @Test
+    void v50CatalogColumnsConstraintsIndexesAndEntityMappingsRemainAligned() throws NoSuchFieldException {
+        assertEquals("character varying", em.createNativeQuery(
+                        "SELECT data_type FROM information_schema.columns "
+                                + "WHERE table_name='click_transactions' AND column_name='payment_source'")
+                .getSingleResult());
+        assertEquals(32, ((Number) em.createNativeQuery(
+                        "SELECT character_maximum_length FROM information_schema.columns "
+                                + "WHERE table_name='click_transactions' AND column_name='payment_source'")
+                .getSingleResult()).intValue());
+        assertEquals(20, ((Number) em.createNativeQuery(
+                        "SELECT character_maximum_length FROM information_schema.columns "
+                                + "WHERE table_name='click_transactions' AND column_name='catalog_account'")
+                .getSingleResult()).intValue());
+        assertEquals(2, ((Number) em.createNativeQuery(
+                        "SELECT count(*) FROM pg_constraint WHERE conname IN "
+                                + "('chk_click_transaction_source', 'chk_click_transaction_catalog_account')")
+                .getSingleResult()).intValue());
+        assertEquals(2, ((Number) em.createNativeQuery(
+                        "SELECT count(*) FROM pg_indexes WHERE indexname IN "
+                                + "('uq_click_transactions_catalog_prepare_id', 'idx_click_transactions_catalog_account_status')")
+                .getSingleResult()).intValue());
+
+        Column source = ClickTransaction.class.getDeclaredField("paymentSource").getAnnotation(Column.class);
+        Column account = ClickTransaction.class.getDeclaredField("catalogAccount").getAnnotation(Column.class);
+        assertNotNull(source);
+        assertNotNull(account);
+        assertEquals("payment_source", source.name());
+        assertEquals(32, source.length());
+        assertEquals("catalog_account", account.name());
+        assertEquals(20, account.length());
     }
 }
