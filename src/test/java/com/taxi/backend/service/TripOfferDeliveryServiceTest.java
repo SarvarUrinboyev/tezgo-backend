@@ -11,6 +11,7 @@ import com.taxi.backend.repository.TripRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -26,6 +27,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.inOrder;
 
 /** Frozen mobile contract regression: delivery is one owner, one unchanged payload pair. */
 @ExtendWith(MockitoExtension.class)
@@ -50,6 +52,7 @@ class TripOfferDeliveryServiceTest {
         offer.setStatus(TripDriverOfferStatus.PENDING_DELIVERY);
         LocalDateTime expiry = LocalDateTime.now().plusSeconds(15);
         offer.setExpiresAt(expiry);
+        when(offers.findById(1L)).thenReturn(Optional.of(offer));
         when(offers.findByIdForUpdate(1L)).thenReturn(Optional.of(offer));
         when(trips.findByIdForUpdate(55L)).thenReturn(Optional.of(trip));
 
@@ -67,6 +70,10 @@ class TripOfferDeliveryServiceTest {
         assertThat(push.getValue().get("offerExpiresAt")).isEqualTo(expectedExpiry);
         assertThat(offer.getStatus()).isEqualTo(TripDriverOfferStatus.ACTIVE);
         assertThat(offer.getDeliveryAttemptState()).isEqualTo("ATTEMPTED");
+        InOrder lockOrder = inOrder(offers, trips);
+        lockOrder.verify(offers).findById(1L);
+        lockOrder.verify(trips).findByIdForUpdate(55L);
+        lockOrder.verify(offers).findByIdForUpdate(1L);
         verify(offers).save(offer);
     }
 
@@ -79,6 +86,7 @@ class TripOfferDeliveryServiceTest {
         offer.setId(1L); offer.setTrip(trip); offer.setDriver(driver);
         offer.setStatus(TripDriverOfferStatus.PENDING_DELIVERY);
         offer.setExpiresAt(LocalDateTime.now().plusSeconds(15));
+        when(offers.findById(1L)).thenReturn(Optional.of(offer));
         when(offers.findByIdForUpdate(1L)).thenReturn(Optional.of(offer));
         when(trips.findByIdForUpdate(55L)).thenReturn(Optional.of(trip));
 
@@ -86,6 +94,27 @@ class TripOfferDeliveryServiceTest {
 
         verifyNoInteractions(messaging, pushes);
         assertThat(offer.getStatus()).isEqualTo(TripDriverOfferStatus.ACCEPTED);
+        assertThat(offer.getDeliveryAttemptState()).isEqualTo("SKIPPED_CLOSED");
+        verify(offers).save(offer);
+    }
+
+    @Test
+    void cancelledTripAtDeliveryTimeNeverSendsStaleOrder() {
+        Trip trip = new Trip();
+        trip.setId(55L); trip.setStatus(TripStatus.CANCELLED_BY_PASSENGER);
+        Driver driver = new Driver(); driver.setId(9L);
+        TripDriverOffer offer = new TripDriverOffer();
+        offer.setId(1L); offer.setTrip(trip); offer.setDriver(driver);
+        offer.setStatus(TripDriverOfferStatus.PENDING_DELIVERY);
+        offer.setExpiresAt(LocalDateTime.now().plusSeconds(15));
+        when(offers.findById(1L)).thenReturn(Optional.of(offer));
+        when(offers.findByIdForUpdate(1L)).thenReturn(Optional.of(offer));
+        when(trips.findByIdForUpdate(55L)).thenReturn(Optional.of(trip));
+
+        new TripOfferDeliveryService(offers, trips, messaging, pushes).deliverOfferAsync(1L);
+
+        verifyNoInteractions(messaging, pushes);
+        assertThat(offer.getStatus()).isEqualTo(TripDriverOfferStatus.CANCELLED);
         assertThat(offer.getDeliveryAttemptState()).isEqualTo("SKIPPED_CLOSED");
         verify(offers).save(offer);
     }

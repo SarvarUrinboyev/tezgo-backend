@@ -41,11 +41,14 @@ public class TripOfferDeliveryService {
     @Async
     @Transactional
     public void deliverOfferAsync(Long offerId) {
+        // Every lifecycle transition locks trip -> offer. Preserve that order here
+        // to avoid accept/cancel/expiry deadlocks against the delivery worker.
+        TripDriverOffer snapshot = offerRepository.findById(offerId).orElse(null);
+        if (snapshot == null) return;
+        Trip trip = tripRepository.findByIdForUpdate(snapshot.getTrip().getId()).orElse(null);
         TripDriverOffer offer = offerRepository.findByIdForUpdate(offerId).orElse(null);
         if (offer == null || offer.getStatus() != TripDriverOfferStatus.PENDING_DELIVERY) return;
         if (!offer.getExpiresAt().isAfter(LocalDateTime.now())) return;
-
-        Trip trip = tripRepository.findByIdForUpdate(offer.getTrip().getId()).orElse(null);
         if (trip == null || trip.getStatus() != TripStatus.SEARCHING || trip.getDriver() != null) {
             closeSkippedOffer(offer, trip);
             return;

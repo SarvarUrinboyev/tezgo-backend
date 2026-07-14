@@ -1,6 +1,7 @@
 package com.taxi.backend.service;
 
 import com.taxi.backend.enums.DriverStatus;
+import com.taxi.backend.enums.TripDriverOfferStatus;
 import com.taxi.backend.enums.TripStatus;
 import com.taxi.backend.model.Driver;
 import com.taxi.backend.model.Trip;
@@ -112,6 +113,64 @@ class TripNotificationHelperSequentialDispatchRegressionTest {
     }
 
     @Test
+    void currentOwnerRejects_rankTwoBecomesTheOnlyNextOffer() {
+        Driver first = driver(1L);
+        TripDriverOffer active = offer(77L, first, TripDriverOfferStatus.ACTIVE,
+                LocalDateTime.now().plusSeconds(15));
+        when(offerRepository.findLiveByTripIdForUpdate(org.mockito.ArgumentMatchers.eq(704L), any()))
+                .thenReturn(List.of(active));
+        when(offerRepository.findAllOfferedDriverIdsByTripId(704L)).thenReturn(List.of(1L));
+        when(offerRepository.findMaxGenerationByTripId(704L)).thenReturn(1);
+        when(matchingService.findNearbyDrivers(anyDouble(), anyDouble(), anyDouble(), anyBoolean()))
+                .thenReturn(ranked(1L, 2L));
+        when(driverRepository.findById(2L)).thenReturn(Optional.of(driver(2L)));
+        when(offerRepository.saveAndFlush(any(TripDriverOffer.class))).thenAnswer(invocation -> {
+            TripDriverOffer next = invocation.getArgument(0);
+            next.setId(902L);
+            return next;
+        });
+
+        lifecycle.rejectCurrentOfferAndDispatchNext(704L, 1L);
+
+        assertThat(active.getStatus()).isEqualTo(com.taxi.backend.enums.TripDriverOfferStatus.REJECTED);
+        ArgumentCaptor<TripDriverOffer> saved = ArgumentCaptor.forClass(TripDriverOffer.class);
+        verify(offerRepository).saveAndFlush(saved.capture());
+        assertThat(saved.getValue().getGeneration()).isEqualTo(2);
+        assertThat(saved.getValue().getCandidateRank()).isEqualTo(2);
+        assertThat(saved.getValue().getDriver().getId()).isEqualTo(2L);
+        verify(deliveryService).deliverOfferAsync(902L);
+        verify(driverRepository, never()).findById(1L);
+    }
+
+    @Test
+    void expiredOffer_advancesOnceToNextRankedDriver() {
+        Driver first = driver(1L);
+        TripDriverOffer expired = offer(77L, first, TripDriverOfferStatus.ACKNOWLEDGED,
+                LocalDateTime.now().minusSeconds(1));
+        when(offerRepository.findById(77L)).thenReturn(Optional.of(expired));
+        when(offerRepository.findByIdForUpdate(77L)).thenReturn(Optional.of(expired));
+        when(offerRepository.findAllOfferedDriverIdsByTripId(704L)).thenReturn(List.of(1L));
+        when(offerRepository.findMaxGenerationByTripId(704L)).thenReturn(1);
+        when(matchingService.findNearbyDrivers(anyDouble(), anyDouble(), anyDouble(), anyBoolean()))
+                .thenReturn(ranked(1L, 2L));
+        when(driverRepository.findById(2L)).thenReturn(Optional.of(driver(2L)));
+        when(offerRepository.saveAndFlush(any(TripDriverOffer.class))).thenAnswer(invocation -> {
+            TripDriverOffer next = invocation.getArgument(0);
+            next.setId(903L);
+            return next;
+        });
+
+        lifecycle.expireOfferAndDispatchNext(77L);
+
+        assertThat(expired.getStatus()).isEqualTo(com.taxi.backend.enums.TripDriverOfferStatus.EXPIRED);
+        ArgumentCaptor<TripDriverOffer> saved = ArgumentCaptor.forClass(TripDriverOffer.class);
+        verify(offerRepository).saveAndFlush(saved.capture());
+        assertThat(saved.getValue().getGeneration()).isEqualTo(2);
+        assertThat(saved.getValue().getDriver().getId()).isEqualTo(2L);
+        verify(deliveryService).deliverOfferAsync(903L);
+    }
+
+    @Test
     void restartRecoveryRetriesOnlyPersistedPendingOfferOwners() {
         when(offerRepository.findPendingDeliveryOfferIds(any())).thenReturn(List.of(901L, 902L));
 
@@ -140,6 +199,20 @@ class TripNotificationHelperSequentialDispatchRegressionTest {
         driver.setCarModel("Cobalt");
         driver.setBalance(0L);
         return driver;
+    }
+
+    private TripDriverOffer offer(long id, Driver owner,
+                                  com.taxi.backend.enums.TripDriverOfferStatus status,
+                                  LocalDateTime expiresAt) {
+        TripDriverOffer offer = new TripDriverOffer();
+        offer.setId(id);
+        offer.setTrip(trip);
+        offer.setDriver(owner);
+        offer.setGeneration(1);
+        offer.setCandidateRank(1);
+        offer.setStatus(status);
+        offer.setExpiresAt(expiresAt);
+        return offer;
     }
 
     private static List<MatchingService.MatchedDriver> ranked(long... ids) {

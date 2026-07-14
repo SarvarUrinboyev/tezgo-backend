@@ -2,6 +2,7 @@ package com.taxi.backend.service;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -64,7 +65,7 @@ class TripDriverOfferPostgresConcurrencyTest {
         }
     }
 
-    @Test
+    @RepeatedTest(10)
     @Timeout(60)
     void parallelLiveOfferInsertsAdmitExactlyOneWinner() throws Exception {
         List<InsertResult> results = runParallel();

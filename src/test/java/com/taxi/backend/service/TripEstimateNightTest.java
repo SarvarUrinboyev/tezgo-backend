@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
@@ -143,5 +144,15 @@ class TripEstimateNightTest {
         reset(tariffRepository, tripRepository, surgePricingService);
         long night = bookTotalSom(1, 0);
         assertEquals(day + 3000, night);
+    }
+
+    @Test
+    void passengerCreatedTrip_entersSequentialDispatcherFacade() {
+        bookTotalSom(12, 0);
+
+        ArgumentCaptor<Trip> saved = ArgumentCaptor.forClass(Trip.class);
+        verify(notificationHelper).notifyNearbyDrivers(saved.capture());
+        assertEquals("APP", saved.getValue().getSource());
+        assertEquals(com.taxi.backend.enums.TripStatus.SEARCHING, saved.getValue().getStatus());
     }
 }

@@ -75,4 +75,16 @@ class MatchingScoreTest {
 
         assertEquals(1L, ranked.get(0).driverId(), "eng erta bo'shagani (early) g'olib");
     }
+
+    @Test
+    void exactScoreAndFreeSinceTie_usesStableDriverIdOrder() {
+        LocalDateTime sameFreeSince = LocalDateTime.of(2026, 7, 14, 0, 0);
+        var lowerId = d(10L, 2.0, 5.0, sameFreeSince);
+        var higherId = d(20L, 2.0, 5.0, sameFreeSince);
+
+        List<MatchingService.MatchedDriver> ranked = matching.rankByScore(List.of(higherId, lowerId), 5.0);
+
+        assertEquals(List.of(10L, 20L), ranked.stream().map(MatchingService.MatchedDriver::driverId).toList(),
+                "exact ties must not depend on cache or database iteration order");
+    }
 }

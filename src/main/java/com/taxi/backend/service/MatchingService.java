@@ -167,7 +167,9 @@ public class MatchingService {
                         // tenglikda — eng erta bo'shagani (free_since kichikroq) birinchi
                         .thenComparing(d -> d.freeSince() != null ? d.freeSince() : LocalDateTime.MAX)
                         // pirovard — aniq ball (yuqori birinchi)
-                        .thenComparing((MatchedDriver d) -> scoreById.get(d.driverId()), Comparator.reverseOrder()))
+                        .thenComparing((MatchedDriver d) -> scoreById.get(d.driverId()), Comparator.reverseOrder())
+                        // Identical score/free_since must not inherit cache or SQL iteration order.
+                        .thenComparing(MatchedDriver::driverId))
                 .collect(Collectors.toList());
     }
 
