@@ -4,7 +4,10 @@ import com.taxi.backend.repository.DriverRepository;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.messaging.AndroidConfig;
 import com.google.firebase.messaging.FirebaseMessaging;
+import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -14,6 +17,9 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 /**
  * Expo Push Notification Service.
@@ -29,16 +35,36 @@ public class PushNotificationService {
     private final StringRedisTemplate redis;
     private final DriverRepository driverRepository;
     private final RestTemplate restTemplate = new RestTemplate();
-    private final boolean directFcmEnabled = Boolean.parseBoolean(
-            System.getenv().getOrDefault("DIRECT_FCM_ENABLED", "false"));
+    private final boolean directFcmEnabled;
+    private final long orderFcmTransportTtlMillis;
     private volatile FirebaseMessaging firebaseMessaging;
 
     // Redis ishlamasa, in-memory fallback
     private final Map<String, String> tokenCache = new ConcurrentHashMap<>();
 
+    /** Existing callers and narrow unit tests retain this constructor. */
     public PushNotificationService(StringRedisTemplate redis, DriverRepository driverRepository) {
+        this(redis, driverRepository,
+                Boolean.parseBoolean(System.getenv().getOrDefault("DIRECT_FCM_ENABLED", "false")),
+                5);
+    }
+
+    @Autowired
+    public PushNotificationService(StringRedisTemplate redis, DriverRepository driverRepository,
+                                   @Value("${DIRECT_FCM_ENABLED:false}") boolean directFcmEnabled,
+                                   @Value("${app.dispatch.order-fcm-transport-ttl-seconds:5}") long orderFcmTransportTtlSeconds) {
         this.redis = redis;
         this.driverRepository = driverRepository;
+        this.directFcmEnabled = directFcmEnabled;
+        this.orderFcmTransportTtlMillis = TimeUnit.SECONDS.toMillis(
+                requireValidOrderTtlSeconds(orderFcmTransportTtlSeconds));
+    }
+
+    private static long requireValidOrderTtlSeconds(long seconds) {
+        if (seconds <= 0 || seconds > 2_419_200) {
+            throw new IllegalArgumentException("order FCM transport TTL must be 1..2419200 seconds");
+        }
+        return seconds;
     }
 
     /** Push tokenni saqlash */
@@ -113,6 +139,36 @@ public class PushNotificationService {
             }
         }
         send(token, title, body, data, "high");
+    }
+
+    /**
+     * Approved AO-P1-03 order-only API. It preserves the same data-only builder
+     * while exposing only a sanitized provider outcome to dispatch lifecycle code.
+     */
+    public OrderPushDeliveryOutcome sendOrderPushWithOutcome(Long driverId, Map<String, Object> data) {
+        if (!isOrder(data)) {
+            throw new IllegalArgumentException("typed order push requires ORDER_PUSH or NEW_ORDER data");
+        }
+        String token = getDriverToken(driverId);
+        if (token == null || token.isBlank()) {
+            return unsupported("TOKEN_MISSING", null, false);
+        }
+        String fingerprint = fingerprint(token);
+        OrderPushDeliveryOutcome outcome;
+        if (token.startsWith("FCM:")) {
+            if (!directFcmEnabled) {
+                log.warning("[PUSH][ORDER] direct FCM disabled; typed delivery is unsupported");
+                return unsupported("DIRECT_FCM_DISABLED", fingerprint, true);
+            }
+            outcome = sendDirectFcm(token.substring(4), null, null, data, "high", fingerprint);
+        } else if (token.startsWith("ExponentPushToken")) {
+            // Preserve legacy Expo data-only delivery, but never pretend it has an FCM typed receipt or TTL.
+            sendExpo(token, null, null, data, "high");
+            outcome = unsupported("EXPO_UNTYPED", fingerprint, true);
+        } else {
+            outcome = unsupported("TOKEN_PATH_UNSUPPORTED", fingerprint, true);
+        }
+        return outcome.withRecipientStillCurrent(token.equals(getDriverToken(driverId)));
     }
 
     /** Yo'lovchiga xabar yuborish */
@@ -191,13 +247,17 @@ public class PushNotificationService {
         if (token == null || token.isBlank()) return;
         if (token.startsWith("FCM:")) {
             if (directFcmEnabled) {
-                sendDirectFcm(token.substring(4), title, body, data, priority);
+                sendDirectFcm(token.substring(4), title, body, data, priority, fingerprint(token));
             } else {
                 log.warning("[PUSH] Direct FCM disabled for current native APK; push skipped safely");
             }
             return;
         }
         if (!token.startsWith("ExponentPushToken")) return;
+        sendExpo(token, title, body, data, priority);
+    }
+
+    private void sendExpo(String token, String title, String body, Map<String, Object> data, String priority) {
         try {
             // Buyurtma push'imi? (yangi buyurtma — to'liq-ekran "kiruvchi qo'ng'iroq" oqimi)
             boolean isOrder = isOrder(data);
@@ -241,48 +301,58 @@ public class PushNotificationService {
      * TezgoMessagingService ORDER_PUSH type'ini top-level data'dan kutadi, shuning uchun
      * haydovchining raw FCM tokeniga bevosita data-message yuboramiz.
      */
-    private void sendDirectFcm(String rawToken, String title, String body,
-                               Map<String, Object> data, String priority) {
-        if (rawToken == null || rawToken.isBlank()) return;
+    private OrderPushDeliveryOutcome sendDirectFcm(String rawToken, String title, String body,
+                                                    Map<String, Object> data, String priority,
+                                                    String recipientFingerprint) {
+        if (rawToken == null || rawToken.isBlank()) {
+            return unsupported("TOKEN_MISSING", recipientFingerprint, false);
+        }
         try {
             boolean isOrder = isOrder(data);
-
-            Map<String, String> fcmData = new HashMap<>();
-            if (data != null) {
-                data.forEach((key, value) -> {
-                    if (key != null && value != null) {
-                        fcmData.put(key, String.valueOf(value));
-                    }
-                });
-            }
-
-            // Oddiy driver push'lari Expo notification delegate orqali ko'rinishi uchun
-            // data payloadga uning Android kalitlarini ham qo'shamiz.
-            if (!isOrder) {
-                if (title != null) fcmData.put("title", title);
-                if (body != null) fcmData.put("message", body);
-                fcmData.put("channelId", "orders_v3");
-                if (!"low".equals(priority)) fcmData.put("sound", "default");
-            }
-
-            Message message = Message.builder()
-                    .setToken(rawToken)
-                    .putAllData(fcmData)
-                    .setAndroidConfig(AndroidConfig.builder()
-                            .setPriority(AndroidConfig.Priority.HIGH)
-                            .build())
-                    .build();
+            Message message = buildDirectFcmMessage(rawToken, title, body, data, priority);
 
             String messageId = getFirebaseMessaging().send(message);
             Object tripId = data != null ? data.get("tripId") : null;
             log.info("[PUSH] FCM accepted: tripId=" + tripId
                     + ", order=" + isOrder + ", messageId=" + messageId);
+            return new OrderPushDeliveryOutcome(OrderPushDeliveryOutcomeCategory.SUCCESS,
+                    null, messageId, recipientFingerprint, true, true);
+        } catch (FirebaseMessagingException exception) {
+            OrderPushDeliveryOutcomeCategory category =
+                    OrderPushDeliveryOutcomeClassifier.classify(exception.getMessagingErrorCode());
+            String code = exception.getMessagingErrorCode() == null
+                    ? null : exception.getMessagingErrorCode().name();
+            log.warning("[PUSH] FCM typed send failure category=" + category + ", code=" + code);
+            return new OrderPushDeliveryOutcome(category, code, null, recipientFingerprint, true, false);
         } catch (Exception e) {
             log.warning("[PUSH] FCM send xato: " + e.getMessage());
+            return new OrderPushDeliveryOutcome(OrderPushDeliveryOutcomeCategory.UNKNOWN_FAILURE,
+                    e.getClass().getSimpleName(), null, recipientFingerprint, true, false);
         }
     }
 
-    private FirebaseMessaging getFirebaseMessaging() {
+    /** One authoritative direct-FCM builder for legacy and typed order delivery. */
+    Message buildDirectFcmMessage(String rawToken, String title, String body,
+                                  Map<String, Object> data, String priority) {
+        boolean isOrder = isOrder(data);
+        Map<String, String> fcmData = new HashMap<>();
+        if (data != null) {
+            data.forEach((key, value) -> {
+                if (key != null && value != null) fcmData.put(key, String.valueOf(value));
+            });
+        }
+        if (!isOrder) {
+            if (title != null) fcmData.put("title", title);
+            if (body != null) fcmData.put("message", body);
+            fcmData.put("channelId", "orders_v3");
+            if (!"low".equals(priority)) fcmData.put("sound", "default");
+        }
+        AndroidConfig.Builder android = AndroidConfig.builder().setPriority(AndroidConfig.Priority.HIGH);
+        if (isOrder) android.setTtl(orderFcmTransportTtlMillis);
+        return Message.builder().setToken(rawToken).putAllData(fcmData).setAndroidConfig(android.build()).build();
+    }
+
+    protected FirebaseMessaging getFirebaseMessaging() {
         FirebaseMessaging current = firebaseMessaging;
         if (current != null) return current;
         synchronized (this) {
@@ -301,5 +371,21 @@ public class PushNotificationService {
         if (data == null) return false;
         String type = String.valueOf(data.get("type"));
         return "NEW_ORDER".equals(type) || "ORDER_PUSH".equals(type);
+    }
+
+    private static OrderPushDeliveryOutcome unsupported(String code, String fingerprint, boolean stillCurrent) {
+        return new OrderPushDeliveryOutcome(OrderPushDeliveryOutcomeCategory.UNSUPPORTED_DELIVERY_PATH,
+                code, null, fingerprint, stillCurrent, false);
+    }
+
+    private static String fingerprint(String token) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
+            StringBuilder value = new StringBuilder(16);
+            for (int index = 0; index < 8; index++) value.append(String.format("%02x", digest[index]));
+            return value.toString();
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 unavailable", exception);
+        }
     }
 }
