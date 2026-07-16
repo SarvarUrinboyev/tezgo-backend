@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -50,7 +51,7 @@ public class TripOfferDeliveryService {
                                     PushNotificationService pushService,
                                     ObjectProvider<TripOfferLifecycleService> lifecycleProvider,
                                     DispatchOfferTimingProperties timing,
-                                    Clock clock) {
+                                    @Qualifier("dispatchClock") Clock clock) {
         this.offerRepository = offerRepository;
         this.tripRepository = tripRepository;
         this.messagingTemplate = messagingTemplate;

@@ -1,6 +1,7 @@
 package com.taxi.backend.pricing;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -44,7 +45,7 @@ public class NightFareService {
             @Value("${pricing.night.surcharge:3000}") long surchargeSom,
             @Value("${pricing.night.start:0}") int startHour,
             @Value("${pricing.night.end:6}") int endHour,
-            Clock nightClock) {
+            @Qualifier("nightClock") Clock nightClock) {
         this.surchargeSom = surchargeSom;
         this.startHour = startHour;
         this.endHour = endHour;
