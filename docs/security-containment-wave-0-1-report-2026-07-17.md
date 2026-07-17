@@ -11,7 +11,7 @@ This is a read-only release-gate report for the isolated candidate. No productio
 
 - Backend worktree: `C:\Users\Laptop\Documents\tezgo-admin-security-containment`
 - Branch: `fix/admin-security-containment-wave-0`
-- Current branch HEAD: `a12d83aa0ed14df1ce7b0abc34ce610baaf73fc9` (documentation-only receipt commit); source/remediation HEAD: `b58a91bfb3953cdf9634bc138d88131e666cb39d`.
+- Source/remediation HEAD: `b58a91bfb3953cdf9634bc138d88131e666cb39d`; later commits on this branch are documentation-only receipt updates and do not change the candidate JAR.
 - Parent: `38e1060b6c760cafea31baaccd1c85b8f4e52b61`
 - Working-tree changes before this receipt were the pre-existing untracked `logs/` only; the committed remediation was not rewritten.
 - Driver compatibility worktree remained separate at commit `79f4bf1c1232f36c2f2b2c7daea400ec87b957ee`.
