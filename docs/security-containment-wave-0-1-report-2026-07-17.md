@@ -32,7 +32,7 @@ This is a read-only release-gate report for the isolated candidate. No productio
 | Canonical baseline | 97 | 490 | 490 | 0 | 0 | 0 |
 | Final Docker/PostgreSQL | 102 | 506 | 506 | 0 | 0 | 0 |
 
-The “493” number was an arithmetic error: the pre-Docker 468 already included the 25 skipped cases. Final execution expanded those 25 skipped method entries to 63 passing PostgreSQL testcases, producing 506 total. The final XML-set SHA-256 is `89266DA0E4E92EB904E6244F713990CDDB7C1939D8CDCCFBC04BC9AA5FFA6D7C`.
+The “493” number was an arithmetic error: the pre-Docker 468 already included the 25 skipped cases. Final execution expanded those 25 skipped method entries to 63 passing PostgreSQL testcases, producing 506 total. The final XML-set SHA-256 is `4FECB513B23A2E314453CF0BFC4FCE818B550429C1AD84578D572F99F54F1868`.
 
 ### D. Complete skipped-test inventory
 
@@ -83,7 +83,7 @@ The candidate fixes exactly these 13 IDs: **DS-001, DS-002, DS-005, DS-006, DS-0
 
 ### M. Full test/package totals
 
-- `\.\mvnw.cmd test`: exit 0, `02:20`, 506 passed, 0 skipped/failure/error.
+- `\.\mvnw.cmd test`: exit 0, `03:58`, 506 passed, 0 skipped/failure/error.
 - `\.\mvnw.cmd clean package`: exit 0, `02:41`, 506 passed, 0 skipped/failure/error; package produced a new candidate JAR.
 - `git diff --check`: pass.
 

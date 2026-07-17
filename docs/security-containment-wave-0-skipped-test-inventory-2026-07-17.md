@@ -1,4 +1,4 @@
-﻿# TEZGO Admin Security Containment Wave 0.1 - skipped-test inventory (2026-07-17)
+# TEZGO Admin Security Containment Wave 0.1 - skipped-test inventory (2026-07-17)
 
 ## Result
 
@@ -6,7 +6,7 @@
 - Branch / HEAD: `fix/admin-security-containment-wave-0` / `b58a91bfb3953cdf9634bc138d88131e666cb39d`
 - Disposable execution: Docker Desktop Server `29.6.1`, Testcontainers `1.21.4`, `postgres:16-alpine` / PostgreSQL `16.14`.
 - Focused command exit `0`; duration `02:11`; `63` executed, `63` passed, `0` skipped, `0` failure, `0` error.
-- Full `.\mvnw.cmd test`: exit `0`, duration `02:20`, `506` passed, `0` skipped/failure/error.
+- Full `.\mvnw.cmd test`: exit `0`, duration `03:58`, `506` passed, `0` skipped/failure/error.
 - `.\mvnw.cmd clean package`: exit `0`, duration `02:41`; package also reports `506` passed, `0` skipped/failure/error.
 
 ## Reconciliation of 493, 468, 490 and 506
@@ -18,7 +18,7 @@
 | Canonical backend baseline | 97 | 490 | 490 | 0 | 0 | 0 | Prior all-pass baseline. |
 | Final disposable PostgreSQL | 102 | 506 | 506 | 0 | 0 | 0 | The 25 skipped methods expanded to 63 passing PostgreSQL testcases (+38); Wave 0 adds 16 tests over the 490 baseline. |
 
-Final Surefire XML-set SHA-256: `89266DA0E4E92EB904E6244F713990CDDB7C1939D8CDCCFBC04BC9AA5FFA6D7C`.
+Final Surefire XML-set SHA-256: `4FECB513B23A2E314453CF0BFC4FCE818B550429C1AD84578D572F99F54F1868`.
 
 ## Previously skipped methods, now executed
 
