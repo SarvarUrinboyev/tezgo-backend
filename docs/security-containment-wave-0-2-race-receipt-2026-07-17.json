@@ -1,0 +1,124 @@
+{
+  "wave": "0.2",
+  "generatedAt": "2026-07-17",
+  "database": {
+    "engine": "PostgreSQL 16.14",
+    "testHarness": "Testcontainers 1.21.4",
+    "productionDataTouched": false
+  },
+  "requiredIndependentRepetitions": 20,
+  "families": [
+    {
+      "id": 1,
+      "name": "authorized versus unauthorized wallet credit",
+      "evidence": ["AdvancedShopServiceTest", "ClickCatalogPostgresConcurrencyTest"],
+      "independentRuns": 1,
+      "status": "NOT_PROVEN",
+      "reason": "Invalid-signature/no-credit checks are deterministic and the PostgreSQL slice does not repeat an authorized-versus-unauthorized race 20 times."
+    },
+    {
+      "id": 2,
+      "name": "duplicate wallet credit",
+      "evidence": ["ClickCatalogPostgresConcurrencyTest.twentyConcurrentDuplicateCompletesCreditExactlyOnceThroughActualServices"],
+      "independentRuns": 20,
+      "workersPerRun": 20,
+      "result": "20/20 pass; one credit, no balance drift, no duplicate ledger",
+      "status": "PASS"
+    },
+    {
+      "id": 3,
+      "name": "serialized ledger balance_before/balance_after chain",
+      "evidence": ["ClickCatalogPostgresConcurrencyTest.tenDistinctCatalogPaymentsShareOneDriverWithoutLosingLedgerSnapshots", "ClickPostgresConcurrencyTest.concurrentDistinctCreditsFormOneAuthoritativeLedgerChain"],
+      "independentRuns": 1,
+      "status": "NOT_PROVEN",
+      "reason": "The PostgreSQL assertions passed, but the authoritative ledger-chain scenarios were not independently repeated 20 times."
+    },
+    {
+      "id": 4,
+      "name": "duplicate valid payment Complete",
+      "evidence": ["ClickCatalogPostgresConcurrencyTest.twentyConcurrentDuplicateCompletesCreditExactlyOnceThroughActualServices"],
+      "independentRuns": 20,
+      "workersPerRun": 20,
+      "result": "20/20 pass; one CONFIRMED settlement",
+      "status": "PASS"
+    },
+    {
+      "id": 5,
+      "name": "invalid versus valid payment settlement",
+      "evidence": ["AdvancedShopServiceTest", "ClickCatalogPostgresConcurrencyTest"],
+      "independentRuns": 1,
+      "status": "NOT_PROVEN",
+      "reason": "Invalid-signature and valid settlement branches are covered, but not as a 20-repetition PostgreSQL race family."
+    },
+    {
+      "id": 6,
+      "name": "KYC/profile owner versus attacker mutation",
+      "evidence": ["AuthControllerContainmentTest", "AuthServiceContainmentTest"],
+      "independentRuns": 1,
+      "status": "NOT_PROVEN",
+      "reason": "Owner binding and PII minimization are unit/controller containment tests; no 20-repetition PostgreSQL/Testcontainers race exists."
+    },
+    {
+      "id": 7,
+      "name": "duplicate or replayed verification-session use",
+      "evidence": ["AuthControllerContainmentTest", "AuthServiceContainmentTest"],
+      "independentRuns": 1,
+      "status": "NOT_PROVEN",
+      "reason": "Replay rejection is deterministic containment coverage, not an independently repeated PostgreSQL race."
+    },
+    {
+      "id": 8,
+      "name": "public privileged-role enrollment concurrency",
+      "evidence": ["AuthControllerContainmentTest.publicOtpCannotSelectPrivilegedRoles", "AuthServiceContainmentTest.serviceRejectsPrivilegedRoleEvenWhenCalledOutsideController"],
+      "independentRuns": 1,
+      "status": "NOT_PROVEN",
+      "reason": "The public boundary is denied in controller/service tests, but there is no 20-repetition PostgreSQL enrollment race."
+    },
+    {
+      "id": 9,
+      "name": "operator create idempotency",
+      "evidence": ["OperatorTripPostgresConcurrencyTest.twentyParallelSameKeyRequestsCreateExactlyOneTripAndNineteenReplays"],
+      "independentRuns": 1,
+      "workersPerRun": 20,
+      "result": "One trip and 19 replays in the completed PostgreSQL race",
+      "status": "NOT_PROVEN",
+      "reason": "The test has 20 concurrent workers in one invocation, not 20 independent repetitions."
+    },
+    {
+      "id": 10,
+      "name": "AO one-live-offer invariant",
+      "evidence": ["TripDriverOfferPostgresConcurrencyTest.parallelLiveOfferInsertsAdmitExactlyOneWinner"],
+      "independentRuns": 20,
+      "workersPerRun": 2,
+      "result": "20/20 pass; exactly one live offer admitted",
+      "status": "PASS"
+    },
+    {
+      "id": 11,
+      "name": "accept versus timeout or delivery failure",
+      "evidence": ["TripOfferDeliveryTimingTest", "TripOfferPermanentFailureTransitionTest", "TripNotificationHelperSequentialDispatchRegressionTest"],
+      "independentRuns": 1,
+      "status": "NOT_PROVEN",
+      "reason": "Delivery/timeout transitions pass deterministic regression tests but are not a 20-repetition PostgreSQL race."
+    },
+    {
+      "id": 12,
+      "name": "exact driver-location authorization under trip-state change",
+      "evidence": ["WebSocketAuthInterceptorTest"],
+      "independentRuns": 1,
+      "status": "NOT_PROVEN",
+      "reason": "Current-role, owner, unrelated-passenger, and malformed-destination checks pass as deterministic interceptor tests; no 20-repetition PostgreSQL trip-state race exists."
+    }
+  ],
+  "summary": {
+    "passFamilies": 2,
+    "notProvenFamilies": 10,
+    "unauthorizedMutationObserved": false,
+    "duplicateLedgerObserved": false,
+    "balanceDriftObserved": false,
+    "doubleAssignmentObserved": false,
+    "hiddenDeadlockObserved": false,
+    "unexplainedRetryObserved": false,
+    "releaseGate": "BLOCKED"
+  }
+}
