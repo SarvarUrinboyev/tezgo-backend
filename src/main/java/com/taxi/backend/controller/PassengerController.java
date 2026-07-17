@@ -144,14 +144,21 @@ public class PassengerController {
                 .stream()
                 .map(d -> Map.<String, Object>of(
                         "driverId", d.driverId(),
-                        "lat", d.lat(),
-                        "lon", d.lon(),
+                        // Passenger demand maps receive a coarse cell only. Exact
+                        // coordinates are delivered through the authorized active-trip
+                        // WebSocket channel, never through arbitrary-coordinate lookup.
+                        "lat", coarseCoordinate(d.lat()),
+                        "lon", coarseCoordinate(d.lon()),
                         "distanceKm", Math.round(d.distanceKm() * 10.0) / 10.0,
                         "etaMinutes", (int) Math.ceil(d.etaMinutes()),
                         "rating", d.rating(),
                         "carModel", d.carModel()))
                 .toList();
         return ResponseEntity.ok(Map.of("drivers", drivers, "count", drivers.size()));
+    }
+
+    private double coarseCoordinate(double coordinate) {
+        return Math.round(coordinate * 100.0) / 100.0;
     }
 
     // ─── Buyurtma berish (/api/passenger/trips — mobile dan keladi) ──────────

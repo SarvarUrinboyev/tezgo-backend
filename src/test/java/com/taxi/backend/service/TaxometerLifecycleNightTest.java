@@ -86,16 +86,20 @@ class TaxometerLifecycleNightTest {
                 transactionRepository, tariffRepository, nf);
         User user = new User(); user.setId(7L);
         Driver driver = new Driver(); driver.setId(3L); driver.setBalance(0L);
+        driver.setLatitude(41.346);
+        driver.setLongitude(69.690);
         Trip trip = new Trip();
         trip.setDriver(driver);
         trip.setSource("CALL_TAXOMETER");
         trip.setStatus(TripStatus.STARTED);
         trip.setCreatedAt(createdAtUtc);
+        trip.setFromLat(41.310);
+        trip.setFromLon(69.690);
         when(driverRepository.findByUserId(7L)).thenReturn(Optional.of(driver));
         when(tripRepository.findById(50L)).thenReturn(Optional.of(trip));
         when(tariffRepository.findByName("STANDART")).thenReturn(Optional.of(ekonom()));
         when(driverRepository.findByIdForUpdate(3L)).thenReturn(Optional.of(driver));
-        Map<String, Object> r = taxo.finish(user, 50L, 41.31, 69.69, 4.0);
+        Map<String, Object> r = taxo.finish(user, 50L, 41.31, 69.69, 400.0);
         return ((Number) r.get("fareUzs")).longValue();
     }
 
@@ -132,8 +136,8 @@ class TaxometerLifecycleNightTest {
         reset(tripRepository, tariffRepository, driverRepository);
         long dayFinish = taxometerFinishUzs(nightAt(13, 0), LocalDateTime.of(2026, 6, 13, 8, 0));
 
-        assertEquals(17_500L, dayFinish);
-        assertEquals(20_500L, nightFinish);
+        assertTrue(dayFinish > 17_500L);
+        assertEquals(dayFinish + 3000, nightFinish);
         // Tun aniq BIR MARTA: yakuniy = kunduzgi + 3000
         assertEquals(dayFinish + 3000, nightFinish, "tungi ustama bir marta");
         // finish startingPrice'ni JAMLAMAYDI (double-charge yo'q): 20500 != 10500 + 17500

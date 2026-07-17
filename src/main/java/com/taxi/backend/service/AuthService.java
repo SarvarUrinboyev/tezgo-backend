@@ -143,11 +143,10 @@ public class AuthService {
                 throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                         "SMS yuborib bo'lmadi. Birozdan keyin qayta urinib ko'ring.");
             }
-            log.info("OTP yuborildi: {} ga SMS", phone);
+            log.info("OTP sent through configured SMS provider");
         } else {
-            // DEV rejim: SMS yo'q, OTP konsolda ko'rsatiladi (test uchun)
-            // Production'da SMS_ENABLED=true qilinadi va bu branch ishlamaydi
-            log.info("OTP [DEV MODE]: {} => {}", phone, code);
+            // DEV rejimda ham OTP qiymati logga yozilmaydi.
+            log.info("OTP generated in non-SMS mode; delivery is disabled");
         }
 
         return "OTP yuborildi";
@@ -156,7 +155,11 @@ public class AuthService {
     /** OTP tekshirish va JWT qaytarish */
     @Transactional
     public Map<String, Object> verifyOtp(String phone, String code, Role role) {
-        log.info("OTP verify: phone={}, smsEnabled={}", phone, smsEnabled);
+        if (role == null || role == Role.ADMIN || role == Role.OPERATOR) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Public OTP faqat PASSENGER yoki DRIVER uchun mavjud");
+        }
+        log.info("OTP verify attempt: smsEnabled={}", smsEnabled);
 
         // Test rejim: faqat smsEnabled=false VA local/dev profilida ishlaydi
         // Production profilida test kodlar HECH QACHON ishlamaydi
@@ -169,11 +172,11 @@ public class AuthService {
                 && ("111111".equals(code) || (role == Role.ADMIN && "123456".equals(code)));
 
         if (isReviewLogin) {
-            log.warn("⚠️ REVIEW demo login — fixed OTP qabul qilindi: phone={}, role={}", phone, role);
+            log.warn("REVIEW demo login accepted: role={}", role);
             otpRepository.findTopByPhoneAndIsUsedFalseOrderByCreatedAtDesc(phone)
                     .ifPresent(otp -> { otp.setUsed(true); otpRepository.save(otp); });
         } else if (isTestCode) {
-            log.warn("⚠️ OTP [TEST MODE]: test kod qabul qilindi — phone={}, role={}. Production'da SMS_ENABLED=true qiling!", phone, role);
+            log.warn("OTP test-mode code accepted: role={}; production SMS must be enabled", role);
             // Test kodda OTP record shart emas, mavjud bo'lsa ishlatilgan deb belgilaymiz
             otpRepository.findTopByPhoneAndIsUsedFalseOrderByCreatedAtDesc(phone)
                     .ifPresent(otp -> { otp.setUsed(true); otpRepository.save(otp); });
@@ -188,7 +191,7 @@ public class AuthService {
             }
 
             if (!otp.getCode().equals(code)) {
-                log.warn("OTP noto'g'ri: phone={}, kutilgan={}, kiritilgan={}", phone, otp.getCode(), code);
+                log.warn("OTP verification failed: code mismatch");
                 throw new RuntimeException("OTP noto'g'ri");
             }
 
@@ -395,22 +398,25 @@ public class AuthService {
             String carModel, String carNumber, String carColor, Integer carYear, String techPassportNumber) {
         User user = userRepository.findByPhone(phone)
                 .orElseThrow(() -> new RuntimeException("Avval OTP orqali kirish kerak"));
+        if (user.getRole() != Role.DRIVER) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Faqat DRIVER hisob egasi ro'yxatdan o'tishi mumkin");
+        }
+
+        if (driverRepository.findByUserIdForUpdate(user.getId()).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Haydovchi profili allaqachon ro'yxatdan o'tgan");
+        }
 
         user.setName(name);
         userRepository.save(user);
 
-        // YANGI driver bo'lsa flag'ni ko'taramiz — keyin faqat YANGI uchun initDriverServices
-        // chaqirilishini ta'minlash uchun (mavjud driver re-submit qilsa duplicate row'lar yo'q).
-        final boolean[] wasCreated = { false };
-        Driver driver = driverRepository.findByUserId(user.getId()).orElseGet(() -> {
-            Driver d = new Driver();
-            d.setUser(user);
-            d.setDriverCode(driverRepository.nextDriverCode());
-            // Status'ni AYNAN PENDING qilib qo'yamiz (schema default ham PENDING — defense in depth).
-            d.setStatus(DriverStatus.PENDING);
-            wasCreated[0] = true;
-            return d;
-        });
+        // A new profile is created only after the pessimistic existence check above.
+        Driver driver = new Driver();
+        driver.setUser(user);
+        driver.setDriverCode(driverRepository.nextDriverCode());
+        // Status'ni AYNAN PENDING qilib qo'yamiz (schema default ham PENDING — defense in depth).
+        driver.setStatus(DriverStatus.PENDING);
 
         driver.setCarModel(carModel);
         driver.setCarNumber(carNumber);
@@ -425,11 +431,7 @@ public class AuthService {
 
         // YANGI driver uchun xizmat (driver_services) qatorlarini boshlang'ich narxlar bilan
         // yaratamiz. Avval verifyOtp'da chaqirilardi; endi bu yerda — chunki driver row endi
-        // FAQAT bu yerda yaratiladi. wasCreated guard + initDriverServices idempotent bo'lgani
-        // sababli mavjud driver qayta submit qilsa duplicate row hosil bo'lmaydi.
-        if (wasCreated[0]) {
-            initDriverServices(driver);
-        }
+        initDriverServices(driver);
 
         // Pasport/biometrik ma'lumotlar uchun alohida rozilik yozuvi (UZ qonun)
         recordDriverDocsConsent(user);

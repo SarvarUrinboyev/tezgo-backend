@@ -27,6 +27,8 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 
 /**
@@ -125,6 +127,48 @@ class WebSocketAuthInterceptorTest {
         assertNull(interceptor.preSend(message, channel));
     }
 
+    @Test
+    void connectRejectsRefreshTokensAndStaleRoles() {
+        when(jwtService.isValid("refresh-token")).thenReturn(true);
+        when(jwtService.extractType("refresh-token")).thenReturn("refresh");
+        assertThrows(SecurityException.class, () -> interceptor.preSend(connect("refresh-token"), channel));
+
+        User user = user(41L);
+        when(jwtService.extractType("access-token")).thenReturn("access");
+        when(jwtService.extractJti("access-token")).thenReturn(null);
+        when(jwtService.extractPhone("access-token")).thenReturn("user");
+        when(jwtService.extractRole("access-token")).thenReturn("DRIVER");
+        user.setRole(com.taxi.backend.enums.Role.PASSENGER);
+        user.setPhone("user");
+        when(jwtService.isValid("access-token")).thenReturn(true);
+        when(userRepository.findByPhone("user")).thenReturn(Optional.of(user));
+        assertThrows(SecurityException.class, () -> interceptor.preSend(connect("access-token"), channel));
+    }
+
+    @Test
+    void connectUsesDatabaseRoleForAuthenticatedSession() {
+        User user = user(52L);
+        user.setPhone("driver");
+        user.setRole(com.taxi.backend.enums.Role.DRIVER);
+        when(jwtService.isValid("access-token")).thenReturn(true);
+        when(jwtService.extractType("access-token")).thenReturn("access");
+        when(jwtService.extractJti("access-token")).thenReturn(null);
+        when(jwtService.extractPhone("access-token")).thenReturn("driver");
+        when(jwtService.extractRole("access-token")).thenReturn("DRIVER");
+        when(userRepository.findByPhone("driver")).thenReturn(Optional.of(user));
+
+        Message<?> result = interceptor.preSend(connect("access-token"), channel);
+
+        assertNotNull(result);
+        StompHeaderAccessor accessor = org.springframework.messaging.support.MessageHeaderAccessor
+                .getAccessor(result, StompHeaderAccessor.class);
+        assertNotNull(accessor.getUser());
+        UsernamePasswordAuthenticationToken authentication =
+                (UsernamePasswordAuthenticationToken) accessor.getUser();
+        assertTrue(authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_DRIVER".equals(a.getAuthority())));
+    }
+
     private void assertAllowed(String destination, User user, String role) {
         assertNotNull(interceptor.preSend(subscription(destination, user, role), channel), destination);
     }
@@ -138,6 +182,13 @@ class WebSocketAuthInterceptorTest {
         accessor.setDestination(destination);
         accessor.setUser(new UsernamePasswordAuthenticationToken(user, null,
                 List.of(new SimpleGrantedAuthority(role))));
+        return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+    }
+
+    private Message<byte[]> connect(String token) {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+        accessor.addNativeHeader("Authorization", "Bearer " + token);
+        accessor.setLeaveMutable(true);
         return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
     }
 

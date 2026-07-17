@@ -1,7 +1,6 @@
 package com.taxi.backend.dto;
 
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 
 public class ContinueTripRequest {
     @NotNull(message = "Kenglik ko'rsatilishi shart")
@@ -12,8 +11,7 @@ public class ContinueTripRequest {
 
     private String toAddress;
 
-    @NotNull(message = "Masofa ko'rsatilishi shart")
-    @Positive(message = "Masofa musbat bo'lishi kerak")
+    /** Deprecated client estimate; server derives the billable distance. */
     private Double distanceKm;
 
     public Double getToLat() { return toLat; }

@@ -56,6 +56,8 @@ class TaxometerWaitingFeeTest {
         driver.setId(5L);
         driver.setBalance(0L);
         driver.setOnline(true);
+        driver.setLatitude(41.318);
+        driver.setLongitude(69.600);
         lenient().when(driverRepository.findByUserId(100L)).thenReturn(Optional.of(driver));
         lenient().when(driverRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(driver));
     }
@@ -93,13 +95,18 @@ class TaxometerWaitingFeeTest {
         trip.setStatus(TripStatus.STARTED);
         trip.setDriver(driver);
         trip.setWaitingPrice(90_000L); // start da hisoblangan kutish haqi
+        trip.setFromLat(41.300);
+        trip.setFromLon(69.600);
         when(tripRepository.findById(1L)).thenReturn(Optional.of(trip));
         when(tariffRepository.findByName("STANDART")).thenReturn(Optional.of(ekonom));
 
         // 2 km: 750000 + 2*250000 = 1,250,000 + 90,000 kutish = 1,340,000 tiyin
-        Map<String, Object> res = taxometerService.finish(driverUser, 1L, 41.31, 69.61, 2.0);
+        Map<String, Object> res = taxometerService.finish(driverUser, 1L, 41.31, 69.61, 200.0);
 
-        assertEquals(1_340_000L, trip.getTotalPrice(), "yakuniy narx kutish haqini o'z ichiga olishi kerak");
+        long expectedDistanceFare = 750_000L + (long) (GeoDistance.haversineKm(41.300, 69.600,
+                driver.getLatitude(), driver.getLongitude()) * 250_000L);
+        assertEquals(expectedDistanceFare + 90_000L, trip.getTotalPrice(),
+                "yakuniy narx kutish haqini o'z ichiga olishi kerak");
         assertEquals(90_000L, res.get("waitingFeeTiyin"));
         // komissiya = 10% * 1,340,000 = 134,000 (kutish haqi bilan)
         verify(driverRepository).findByIdForUpdate(5L);
@@ -119,13 +126,18 @@ class TaxometerWaitingFeeTest {
         trip.setStatus(TripStatus.STARTED);
         trip.setDriver(driver);
         trip.setExtraPrice(500_000L); // operator tanlagan xizmatlar (masalan REAR_LUGGAGE)
+        trip.setFromLat(41.300);
+        trip.setFromLon(69.600);
         when(tripRepository.findById(1L)).thenReturn(Optional.of(trip));
         when(tariffRepository.findByName("STANDART")).thenReturn(Optional.of(ekonom));
 
         // 2 km: 750000 + 500000 + 0 kutish + 500000 xizmat = 1,750,000 tiyin
-        Map<String, Object> res = taxometerService.finish(driverUser, 1L, 41.31, 69.61, 2.0);
+        Map<String, Object> res = taxometerService.finish(driverUser, 1L, 41.31, 69.61, 200.0);
 
-        assertEquals(1_750_000L, trip.getTotalPrice(), "yakuniy narx xizmatlarni o'z ichiga olishi kerak");
+        long expectedDistanceFare = 750_000L + (long) (GeoDistance.haversineKm(41.300, 69.600,
+                driver.getLatitude(), driver.getLongitude()) * 250_000L);
+        assertEquals(expectedDistanceFare + 500_000L, trip.getTotalPrice(),
+                "yakuniy narx xizmatlarni o'z ichiga olishi kerak");
         assertEquals(500_000L, res.get("servicesFeeTiyin"));
         // komissiya = 10% * 1,750,000 = 175,000 (xizmatlar bilan)
         verify(driverRepository).findByIdForUpdate(5L);

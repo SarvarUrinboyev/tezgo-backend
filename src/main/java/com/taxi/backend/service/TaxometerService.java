@@ -140,8 +140,19 @@ public class TaxometerService {
         if (trip.getStatus() != TripStatus.STARTED) {
             throw new RuntimeException("Taxometr allaqachon yakunlangan");
         }
-        if (distanceKm <= 0) {
-            throw new RuntimeException("Masofa 0 dan katta bo'lishi kerak");
+        // Fare authority is server-side. The client-supplied end coordinates and
+        // distance are display/transport fields only; use the last authenticated
+        // driver location persisted by the location pipeline.
+        if (!GeoDistance.isValidCoordinate(trip.getFromLat(), trip.getFromLon())
+                || !GeoDistance.isValidCoordinate(driver.getLatitude(), driver.getLongitude())) {
+            throw new RuntimeException("Taxometr uchun server lokatsiyasi mavjud emas");
+        }
+        double authoritativeEndLat = driver.getLatitude();
+        double authoritativeEndLon = driver.getLongitude();
+        double authoritativeDistanceKm = GeoDistance.haversineKm(
+                trip.getFromLat(), trip.getFromLon(), authoritativeEndLat, authoritativeEndLon);
+        if (!(authoritativeDistanceKm > 0.0) || !Double.isFinite(authoritativeDistanceKm)) {
+            throw new RuntimeException("Server masofasi 0 dan katta bo'lishi kerak");
         }
 
         // A5 — agar taxometer PAUZADA yakunlansa, ochiq kutish davrini ham waitingPrice ga qo'shamiz.
@@ -170,13 +181,14 @@ public class TaxometerService {
         // biznes-zonada; 01:00 da boshlangan safar 06:30 da tugasa ham tungi tarifda qoladi).
         // Per-km va kutish/xizmat haqi O'ZGARMAYDI — faqat base oshadi.
         long baseTiyin = nightFareService.applyToBaseAtCreation(base.getBasePrice(), trip.getCreatedAt());
-        long fareTiyin = baseTiyin + (long) (distanceKm * base.getPricePerKm()) + waitingFee + servicesFee;
+        long fareTiyin = baseTiyin + (long) (authoritativeDistanceKm * base.getPricePerKm())
+                + waitingFee + servicesFee;
         long commissionTiyin = Math.round(fareTiyin * commissionPercent / 100.0);
 
-        trip.setToLat(endLat);
-        trip.setToLon(endLon);
+        trip.setToLat(authoritativeEndLat);
+        trip.setToLon(authoritativeEndLon);
         trip.setToAddress("Taxometr yakunlandi");
-        trip.setDistanceKm(BigDecimal.valueOf(distanceKm));
+        trip.setDistanceKm(BigDecimal.valueOf(authoritativeDistanceKm));
         trip.setTotalPrice(fareTiyin);
         trip.setBasePrice(fareTiyin);
         trip.setStatus(TripStatus.COMPLETED);
@@ -197,12 +209,12 @@ public class TaxometerService {
         tx.setAmount(-commissionTiyin);
         tx.setBalanceBefore(balanceBefore);
         tx.setBalanceAfter(balanceAfter);
-        tx.setDescription("Taxometr komissiya: " + distanceKm + " km");
+        tx.setDescription("Taxometr komissiya: " + authoritativeDistanceKm + " km");
         transactionRepository.save(tx);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tripId", trip.getId());
-        result.put("distanceKm", distanceKm);
+        result.put("distanceKm", authoritativeDistanceKm);
         result.put("fareUzs", fareTiyin / 100);
         result.put("fareTiyin", fareTiyin);
         result.put("waitingFeeTiyin", waitingFee);

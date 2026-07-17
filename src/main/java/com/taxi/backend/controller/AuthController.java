@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -119,20 +120,16 @@ public class AuthController {
         // XAVFSIZLIK: Rolni validatsiya qilish
         Role role;
         try {
-            role = Role.valueOf(req.getRole().toUpperCase());
+            role = Role.valueOf(req.getRole() == null ? "" : req.getRole().toUpperCase());
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", "Noto'g'ri rol"));
         }
 
-        // ADMIN roli bilan kirish — faqat MAVJUD admin foydalanuvchilar uchun
-        // Yangi ADMIN yaratish mumkin EMAS (faqat DataInitializer orqali)
-        if (role == Role.ADMIN) {
-            var existingUser = authService.findUserByPhone(req.getPhone());
-            if (existingUser == null || existingUser.getRole() != Role.ADMIN) {
-                log.warn("XAVFSIZLIK: ADMIN bo'lmagan foydalanuvchi ADMIN sifatida kirishga urinmoqda — phone={}, IP={}",
-                        req.getPhone(), clientIp);
-                return ResponseEntity.status(403).body(Map.of("error", "Ruxsat yo'q"));
-            }
+        // Public OTP is an end-user onboarding boundary. Staff roles must use the
+        // authenticated, audited password/provisioning workflow instead.
+        if (role == Role.ADMIN || role == Role.OPERATOR) {
+            log.warn("XAVFSIZLIK: public OTP orqali privileged role so'raldi, IP={}", clientIp);
+            return ResponseEntity.status(403).body(Map.of("error", "Bu rol uchun alohida staff login kerak"));
         }
 
         return ResponseEntity.ok(authService.verifyOtp(req.getPhone(), req.getCode(), role));
@@ -162,7 +159,12 @@ public class AuthController {
         @ApiResponse(responseCode = "404", description = "Fuqaro topilmadi")
     })
     @PostMapping("/verify-passport")
-    public ResponseEntity<?> verifyPassport(@Valid @RequestBody VerifyPassportRequest req) {
+    public ResponseEntity<?> verifyPassport(@AuthenticationPrincipal User authenticatedUser,
+                                            @Valid @RequestBody VerifyPassportRequest req) {
+        if (!isDriver(authenticatedUser)) {
+            return ResponseEntity.status(authenticatedUser == null ? 401 : 403)
+                    .body(Map.of("error", "Haydovchi autentifikatsiyasi talab qilinadi"));
+        }
         String series = req.getSeries().toUpperCase().trim();
         String number = req.getNumber().trim();
 
@@ -173,7 +175,7 @@ public class AuthController {
         if (result == null)
             return ResponseEntity.status(404).body(Map.of("error",
                     "Fuqaro topilmadi. Captcha noto'g'ri yoki seriya/raqam/sana xato"));
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(passportResponse(result));
     }
 
     @Operation(summary = "Avtomobil tekshirish", description = "Texnik pasport va davlat raqami orqali avtomobil ma'lumotlarini oladi")
@@ -183,7 +185,12 @@ public class AuthController {
         @ApiResponse(responseCode = "404", description = "Avtomobil topilmadi")
     })
     @PostMapping("/verify-vehicle")
-    public ResponseEntity<?> verifyVehicle(@Valid @RequestBody VerifyVehicleRequest req) {
+    public ResponseEntity<?> verifyVehicle(@AuthenticationPrincipal User authenticatedUser,
+                                            @Valid @RequestBody VerifyVehicleRequest req) {
+        if (!isDriver(authenticatedUser)) {
+            return ResponseEntity.status(authenticatedUser == null ? 401 : 403)
+                    .body(Map.of("error", "Haydovchi autentifikatsiyasi talab qilinadi"));
+        }
         String tp = req.getTechPassport().toUpperCase().trim().replaceAll("\\s+", "");
         if (!tp.matches("[A-Z]{3}\\d{7}"))
             return ResponseEntity.badRequest().body(Map.of("error", "Texnik pasport formati noto'g'ri (AAG1234567)"));
@@ -195,15 +202,10 @@ public class AuthController {
         String techNumber = tp.substring(3);
         var result = govApiService.lookupVehicleKapital(req.getPlateNumber(), techSeries, techNumber);
 
-        if (result == null) {
-            log.warn("[verify-vehicle] Kapital API ishlamadi, test data ishlatilmoqda");
-            result = govApiService.lookupVehicle(tp);
-        }
-
         if (result == null)
             return ResponseEntity.status(404).body(Map.of("error",
                     "Avtomobil topilmadi. Davlat raqami yoki texnik pasport ma'lumotlarini tekshiring"));
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(vehicleResponse(result));
     }
 
     @Operation(summary = "Haydovchi ro'yxatdan o'tishi", description = "Haydovchi to'liq ma'lumotlarini saqlaydi. JWT tokendan telefon avtomatik olinadi.")
@@ -212,19 +214,15 @@ public class AuthController {
         @ApiResponse(responseCode = "400", description = "Validatsiya xatosi yoki pasport duplicate")
     })
     @PostMapping("/register/driver")
-    public ResponseEntity<?> registerDriver(@Valid @RequestBody RegisterDriverRequest req,
-                                            @RequestHeader(value = "Authorization", required = false) String authHeader) {
-        // Telefon: Authorization headerdan (JWT) yoki body dan
-        String phone = null;
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            String token = authHeader.substring(7);
-            try {
-                if (jwtService.isValid(token)) phone = jwtService.extractPhone(token);
-            } catch (Exception ignored) { /* expired token — body dan phone olinadi */ }
+    public ResponseEntity<?> registerDriver(@AuthenticationPrincipal User authenticatedUser,
+                                            @Valid @RequestBody RegisterDriverRequest req) {
+        if (!isDriver(authenticatedUser)) {
+            return ResponseEntity.status(authenticatedUser == null ? 401 : 403)
+                    .body(Map.of("error", "Haydovchi autentifikatsiyasi talab qilinadi"));
         }
-        if (phone == null) phone = req.getPhone();
-        if (phone == null || phone.isBlank())
-            return ResponseEntity.badRequest().body(Map.of("error", "Avval OTP orqali kirish kerak"));
+        // The authenticated subject is the only identity selector. The body phone
+        // is intentionally ignored to prevent cross-profile mutation.
+        String phone = authenticatedUser.getPhone();
 
         // Passport duplicate tekshiruvi
         if (req.getPassportSeries() != null && !req.getPassportSeries().isBlank()
@@ -259,11 +257,43 @@ public class AuthController {
         if (!"refresh".equals(jwtService.extractType(refreshToken)))
             return ResponseEntity.status(401).body(Map.of("error", "Bu refresh token emas"));
 
-        String phone = jwtService.extractPhone(refreshToken);
-        String role = jwtService.extractRole(refreshToken);
+        String refreshJti = jwtService.extractJti(refreshToken);
+        if (refreshJti == null || blacklistService.isBlacklisted(refreshJti))
+            return ResponseEntity.status(401).body(Map.of("error", "Refresh token bekor qilingan"));
 
-        String newAccessToken = jwtService.generateToken(phone, role);
+        String phone = jwtService.extractPhone(refreshToken);
+        var currentUser = userRepository.findByPhone(phone).orElse(null);
+        if (currentUser == null || !currentUser.isActive())
+            return ResponseEntity.status(401).body(Map.of("error", "Foydalanuvchi topilmadi yoki bloklangan"));
+
+        String tokenRole = jwtService.extractRole(refreshToken);
+        if (currentUser.getRole() == null || !currentUser.getRole().name().equalsIgnoreCase(tokenRole))
+            return ResponseEntity.status(401).body(Map.of("error", "Token roli eskirgan"));
+
+        String newAccessToken = jwtService.generateToken(phone, currentUser.getRole().name());
         return ResponseEntity.ok(Map.of("token", newAccessToken));
+    }
+
+    private boolean isDriver(User user) {
+        return user != null && user.isActive() && user.getRole() == Role.DRIVER;
+    }
+
+    private Map<String, Object> passportResponse(Map<String, Object> source) {
+        Map<String, Object> safe = new java.util.LinkedHashMap<>();
+        for (String key : java.util.List.of("lastName", "firstName", "middleName", "fullName",
+                "birthDate", "address", "passportSeries", "passportNumber")) {
+            if (source.containsKey(key)) safe.put(key, source.get(key));
+        }
+        return safe;
+    }
+
+    private Map<String, Object> vehicleResponse(Map<String, Object> source) {
+        Map<String, Object> safe = new java.util.LinkedHashMap<>();
+        for (String key : java.util.List.of("carModel", "carYear", "carNumber", "techPassportNumber",
+                "vehicleType", "region", "seats")) {
+            if (source.containsKey(key)) safe.put(key, source.get(key));
+        }
+        return safe;
     }
 
     @Operation(summary = "Tizimdan chiqish", description = "Access va refresh tokenlarni bekor qiladi (Redis blacklist)")

@@ -164,7 +164,7 @@ public class GovApiService {
             }
         }
 
-        log.debug("lookupPassport: series={} number={} birthDate={} captcha={}", series, number, birthDate, captchaValue);
+        log.debug("lookupPassport request received");
 
         if (!series.matches("[A-Z]{2}") || !number.matches("\\d{7}")) return null;
 
@@ -172,8 +172,7 @@ public class GovApiService {
         String captchaId = sessionCaptchaIds.remove(sessionId);
         HttpClient storedClient = sessionClients.remove(sessionId);
 
-        log.debug("lookup: sessionId={} captchaId={} hasClient={} storedSessions={}",
-                sessionId, captchaId, storedClient != null, sessionCaptchaIds.keySet());
+        log.debug("lookupPassport provider session present={}", captchaId != null && storedClient != null);
 
         if (captchaId != null) {
             // ── REAL API ─────────────────────────────────────────────
@@ -182,7 +181,7 @@ public class GovApiService {
                 // soliq.uz so'rovi ham O'zbek proxy orqali (captcha bilan bir xil IP'dan kelishi shart).
                 HttpClient searchClient = soliqClientBuilder().build();
 
-                log.debug("x-captcha-id={} x-captcha-value={}", captchaId, captchaValue);
+                log.debug("passport provider captcha submitted");
 
                 // docCode="01" → O'zbekiston pasporti (F12 dan aniqlandi)
                 String reqBody = mapper.writeValueAsString(Map.of(
@@ -207,8 +206,7 @@ public class GovApiService {
                         .POST(HttpRequest.BodyPublishers.ofString(reqBody))
                         .build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 
-                log.debug("my.soliq.uz [{}] reqBody={}", res.statusCode(), reqBody);
-                log.debug("my.soliq.uz response: {}", res.body());
+                log.debug("my.soliq.uz response status={}", res.statusCode());
 
                 if (res.statusCode() == 200 && res.body() != null && !res.body().isBlank()) {
                     Map<String, Object> root = mapper.readValue(res.body(), new TypeReference<>() {});
@@ -218,7 +216,7 @@ public class GovApiService {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> json = (root.get("data") instanceof Map)
                             ? (Map<String, Object>) root.get("data") : root;
-                    log.debug("data keys: {} -> {}", json.keySet(), json);
+                    log.debug("passport provider response fields received={}", json.keySet());
 
                     String surName = str(json, "surName", "lastName", "familiya", "surname", "family");
                     if (surName != null) {
@@ -245,7 +243,7 @@ public class GovApiService {
                 }
 
                 // Ma'lumot topilmadi yoki captcha noto'g'ri — null qaytaramiz
-                log.debug("my.soliq.uz: ma'lumot topilmadi -> {}", res.body());
+                log.debug("my.soliq.uz: no matching record");
                 return null;
 
             } catch (Exception e) {
@@ -254,8 +252,8 @@ public class GovApiService {
             }
         }
 
-        // Sessiya yo'q (captcha olinmagan) → test ma'lumotlardan qidirish
-        return TEST_PASSPORTS.getOrDefault(series + number, null);
+        // No provider-backed session: never return fixture data in a production path.
+        return null;
     }
 
     /** Foydalanuvchi kiritgan pasport ma'lumotlarini qaytaradi — admin tasdiqlaydi */
@@ -311,7 +309,7 @@ public class GovApiService {
 
             // Meta tagdan CSRF tokenni olamiz: <meta name="csrf-token" content="...">
             String csrfToken = extractMetaCsrf(pageRes.body());
-            log.debug("[Kapital] page={} csrfToken={}", pageRes.statusCode(), csrfToken);
+            log.debug("[Kapital] form status={}", pageRes.statusCode());
 
             if (csrfToken == null || csrfToken.isBlank()) {
                 log.error("[Kapital] CSRF token topilmadi");
@@ -337,7 +335,7 @@ public class GovApiService {
                     .POST(HttpRequest.BodyPublishers.ofString(formBody))
                     .build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 
-            log.debug("[Kapital] api={} body={}", res.statusCode(), res.body());
+            log.debug("[Kapital] API response status={}", res.statusCode());
 
             if (res.statusCode() != 200 || res.body() == null || res.body().isBlank()) return null;
 
@@ -390,7 +388,7 @@ public class GovApiService {
         if (techPassport == null) return null;
         techPassport = techPassport.trim().toUpperCase().replaceAll("\\s+", "");
         if (!techPassport.matches("[A-Z]{3}\\d{7}")) return null;
-        return TEST_VEHICLES.get(techPassport);
+        return null;
     }
 
     // ── YORDAMCHI ─────────────────────────────────────────────────────────

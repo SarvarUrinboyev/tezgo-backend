@@ -18,6 +18,10 @@ import java.util.Optional;
 public interface DriverRepository extends JpaRepository<Driver, Long> {
     Optional<Driver> findByUserId(Long userId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT d FROM Driver d WHERE d.user.id = :userId")
+    Optional<Driver> findByUserIdForUpdate(@Param("userId") Long userId);
+
     @Query("SELECT d FROM Driver d JOIN FETCH d.user")
     List<Driver> findAllWithUser();
 

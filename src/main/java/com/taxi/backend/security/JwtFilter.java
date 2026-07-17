@@ -84,9 +84,15 @@ public class JwtFilter extends OncePerRequestFilter {
             return;
         }
 
+        User user = userOpt.get();
+        if (user.getRole() == null || role == null || !user.getRole().name().equalsIgnoreCase(role)) {
+            sendError(response, 401, "Token roli eskirgan", "TOKEN_ROLE_STALE");
+            return;
+        }
+
         var auth = new UsernamePasswordAuthenticationToken(
-                userOpt.get(), null,
-                List.of(new SimpleGrantedAuthority("ROLE_" + role)));
+                user, null,
+                List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name())));
         SecurityContextHolder.getContext().setAuthentication(auth);
 
         filterChain.doFilter(request, response);

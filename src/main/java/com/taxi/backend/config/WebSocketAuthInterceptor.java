@@ -103,6 +103,11 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
             throw new SecurityException("Token muddati tugagan");
         }
 
+        if (!"access".equals(jwtService.extractType(token))) {
+            log.warn("[WS_DENY] command=CONNECT reason=ACCESS_TOKEN_REQUIRED");
+            throw new SecurityException("WebSocket uchun access token kerak");
+        }
+
         String jti = jwtService.extractJti(token);
         if (jti != null && blacklistService.isBlacklisted(jti)) {
             throw new SecurityException("Token bekor qilingan");
@@ -117,9 +122,13 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         }
 
         User user = userOpt.get();
+        if (user.getRole() == null || role == null || !user.getRole().name().equalsIgnoreCase(role)) {
+            log.warn("[WS_DENY] command=CONNECT reason=STALE_ROLE");
+            throw new SecurityException("Token roli eskirgan");
+        }
         var auth = new UsernamePasswordAuthenticationToken(
                 user, null,
-                List.of(new SimpleGrantedAuthority("ROLE_" + role)));
+                List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name())));
         accessor.setUser(auth);
     }
 

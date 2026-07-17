@@ -562,22 +562,30 @@ public class AdminController {
         }
     }
 
-    /** OTP Monitor — so'nggi 30 daqiqa OTP kodlari */
+    /** OTP Monitor — code never leaves the server; only masked operational status is exposed. */
     @GetMapping("/otp/monitor")
-    public ResponseEntity<?> otpMonitor() {
+    public ResponseEntity<?> otpMonitor(@AuthenticationPrincipal User admin) {
+        if (admin == null || admin.getRole() != com.taxi.backend.enums.Role.ADMIN) {
+            return ResponseEntity.status(403).body(Map.of("error", "Faqat ADMIN uchun"));
+        }
         java.time.LocalDateTime since = java.time.LocalDateTime.now().minusMinutes(30);
         var codes = otpRepository.findTop50ByCreatedAtAfterOrderByCreatedAtDesc(since);
         var result = codes.stream().map(o -> {
             java.util.LinkedHashMap<String, Object> m = new java.util.LinkedHashMap<>();
             m.put("id", o.getId());
-            m.put("phone", o.getPhone());
-            m.put("code", o.getCode());
+            m.put("phone", maskPhone(o.getPhone()));
+            m.put("code", null);
             m.put("createdAt", o.getCreatedAt() != null ? o.getCreatedAt().toString() : null);
             m.put("expiresAt", o.getExpiresAt().toString());
             m.put("isUsed", o.isUsed());
             return m;
         }).toList();
         return ResponseEntity.ok(result);
+    }
+
+    private String maskPhone(String phone) {
+        if (phone == null || phone.length() < 4) return "***";
+        return "***" + phone.substring(phone.length() - 2);
     }
 
     @Operation(summary = "Source statistikasi", description = "CALL vs APP buyurtmalar soni va SMS yuborilgan soni. Qo'ng'iroqdan ilovaga o'tish foizini kuzatish uchun.")

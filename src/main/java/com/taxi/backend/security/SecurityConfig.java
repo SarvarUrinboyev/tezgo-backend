@@ -63,6 +63,8 @@ public class SecurityConfig {
                                     .ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN));
                 })
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/auth/verify-passport", "/api/auth/verify-vehicle",
+                                "/api/auth/register/driver").hasRole("DRIVER")
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/tariffs").permitAll()

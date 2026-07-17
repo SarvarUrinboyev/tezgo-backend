@@ -53,6 +53,8 @@ class TaxometerFinishIdempotentTest {
         driver = new Driver();
         driver.setId(5L);
         driver.setBalance(500_000L);
+        driver.setLatitude(41.345);
+        driver.setLongitude(69.600);
         when(driverRepository.findByUserId(100L)).thenReturn(Optional.of(driver));
         when(driverRepository.findByIdForUpdate(5L)).thenReturn(Optional.of(driver));
     }
@@ -65,6 +67,8 @@ class TaxometerFinishIdempotentTest {
         trip.setStatus(TripStatus.STARTED);
         trip.setSource("TAXOMETER");
         trip.setDriver(driver);
+        trip.setFromLat(41.300);
+        trip.setFromLon(69.600);
         when(tripRepository.findById(1L)).thenReturn(Optional.of(trip));
 
         Tariff ekonom = new Tariff();
@@ -73,10 +77,12 @@ class TaxometerFinishIdempotentTest {
         ekonom.setPricePerKm(100_000L);
         when(tariffRepository.findByName("STANDART")).thenReturn(Optional.of(ekonom));
 
-        // 1-finish: fare = 300000 + 5*100000 = 800000; komissiya 10% = 80000
-        var res = taxometerService.finish(driverUser, 1L, 41.3, 69.6, 5.0);
+        // The malicious client distance is ignored; fare uses the server-held GPS path.
+        var res = taxometerService.finish(driverUser, 1L, 41.3, 69.6, 999.0);
         assertEquals(TripStatus.COMPLETED, trip.getStatus());
-        assertEquals(800_000L, res.get("fareTiyin"));
+        long expectedFare = 300_000L + (long) (GeoDistance.haversineKm(41.300, 69.600,
+                driver.getLatitude(), driver.getLongitude()) * 100_000L);
+        assertEquals(expectedFare, res.get("fareTiyin"));
         verify(driverRepository, times(1)).findByIdForUpdate(5L);
 
         // 2-finish (trip allaqachon COMPLETED) -> rad, yangi komissiya yo'q

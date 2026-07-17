@@ -5,7 +5,6 @@ import com.taxi.backend.enums.DriverStatus;
 import com.taxi.backend.enums.PhotoType;
 import com.taxi.backend.enums.ServiceType;
 import com.taxi.backend.enums.TripStatus;
-import com.taxi.backend.enums.TransactionType;
 import com.taxi.backend.exception.ForbiddenException;
 import com.taxi.backend.model.*;
 import com.taxi.backend.model.Tariff;
@@ -314,31 +313,6 @@ public class DriverAppService {
         result.put("driverId", driver.getId());
         result.put("transactions", items);
         return result;
-    }
-
-    /** Balans to'ldirish — atomic DB update (race condition himoyasi) */
-    @Transactional
-    public Map<String, Object> topupBalance(User user, Long amount) {
-        if (amount == null || amount <= 0) throw new RuntimeException("Miqdor musbat bo'lishi kerak");
-        Driver ownedDriver = driverRepository.findByUserId(user.getId())
-                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
-        Driver driver = driverRepository.findByIdForUpdate(ownedDriver.getId())
-                .orElseThrow(() -> new RuntimeException("Haydovchi topilmadi"));
-        if (driver.getBalance() == null) throw new IllegalStateException("Haydovchi balansi topilmadi");
-        long before = driver.getBalance();
-        long after = Math.addExact(before, amount);
-        driver.setBalance(after);
-
-        Transaction tx = new Transaction();
-        tx.setDriver(driver);
-        tx.setType(TransactionType.TOPUP);
-        tx.setAmount(amount);
-        tx.setBalanceBefore(before);
-        tx.setBalanceAfter(after);
-        tx.setDescription("Payme orqali to'ldirildi");
-        transactionRepository.save(tx);
-
-        return Map.of("balance", after);
     }
 
     /** Bugungi statistika — optimallashtirilgan (1 ta DB query bilan) */

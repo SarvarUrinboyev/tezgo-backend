@@ -216,12 +216,6 @@ public class DriverController {
         return ResponseEntity.ok(driverService.getBalanceSimple(user));
     }
 
-    @PostMapping("/balance/topup")
-    public ResponseEntity<?> topupBalance(@AuthenticationPrincipal User user,
-            @Valid @RequestBody com.taxi.backend.dto.TopupRequest req) {
-        return ResponseEntity.ok(driverService.topupBalance(user, req.getAmount()));
-    }
-
     @GetMapping("/transactions")
     public ResponseEntity<?> getTransactions(@AuthenticationPrincipal User user,
             @RequestParam(defaultValue = "0") int page,

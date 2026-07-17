@@ -1047,6 +1047,10 @@ public class TripService {
     public Map<String, Object> continueTrip(User passenger, Long completedTripId,
             Double toLat, Double toLon, String toAddress, Double distanceKm) {
 
+        if (!GeoDistance.isValidCoordinate(toLat, toLon)) {
+            throw new RuntimeException("Yangi manzil koordinatasi noto'g'ri");
+        }
+
         Trip oldTrip = tripRepository.findById(completedTripId)
                 .orElseThrow(() -> new RuntimeException("Buyurtma topilmadi"));
         if (!oldTrip.getPassenger().getId().equals(passenger.getId()))
@@ -1064,18 +1068,28 @@ public class TripService {
         Driver driver = oldTrip.getDriver();
         Tariff tariff = oldTrip.getTariff();
 
+        // Fare distance is derived from server-held trip/driver coordinates. The
+        // client distance is retained only for backwards-compatible request shape.
+        Double fromLat = oldTrip.getToLat() != null && oldTrip.getToLat() != 0
+                ? oldTrip.getToLat() : driver.getLatitude();
+        Double fromLon = oldTrip.getToLon() != null && oldTrip.getToLon() != 0
+                ? oldTrip.getToLon() : driver.getLongitude();
+        if (!GeoDistance.isValidCoordinate(fromLat, fromLon)) {
+            throw new RuntimeException("Davom etish uchun server lokatsiyasi mavjud emas");
+        }
+        double authoritativeDistanceKm = GeoDistance.haversineKm(fromLat, fromLon, toLat, toLon);
+        if (!(authoritativeDistanceKm > 0.0) || !Double.isFinite(authoritativeDistanceKm)) {
+            throw new RuntimeException("Server masofasi 0 dan katta bo'lishi kerak");
+        }
+
         // Narx hisoblash — 10 km dan ortiq bo'lsa har km +1000 so'm
         long effectivePricePerKm = tariff.getPricePerKm();
-        if (distanceKm > 10) {
+        if (authoritativeDistanceKm > 10) {
             effectivePricePerKm += 100000;
         }
-        long basePrice = tariff.getBasePrice() + (long) (distanceKm * effectivePricePerKm);
+        long basePrice = tariff.getBasePrice() + (long) (authoritativeDistanceKm * effectivePricePerKm);
 
         // from = eski trip ning destination (hozirgi joylashuv)
-        Double fromLat = oldTrip.getToLat() != null && oldTrip.getToLat() != 0 ?
-                oldTrip.getToLat() : (driver.getLatitude() != null ? driver.getLatitude() : 0.0);
-        Double fromLon = oldTrip.getToLon() != null && oldTrip.getToLon() != 0 ?
-                oldTrip.getToLon() : (driver.getLongitude() != null ? driver.getLongitude() : 0.0);
         String fromAddress = oldTrip.getToAddress() != null ? oldTrip.getToAddress() : "Joriy joylashuv";
 
         Trip newTrip = new Trip();
@@ -1088,7 +1102,7 @@ public class TripService {
         newTrip.setToLat(toLat);
         newTrip.setToLon(toLon);
         newTrip.setToAddress(toAddress);
-        newTrip.setDistanceKm(java.math.BigDecimal.valueOf(distanceKm));
+        newTrip.setDistanceKm(java.math.BigDecimal.valueOf(authoritativeDistanceKm));
         newTrip.setBasePrice(basePrice);
         newTrip.setTotalPrice(basePrice);
         // Darhol STARTED — haydovchi va yo'lovchi birga turibdi
@@ -1106,7 +1120,7 @@ public class TripService {
         continueMsg.put("toLat", toLat);
         continueMsg.put("toLon", toLon);
         continueMsg.put("price", basePrice / 100);
-        continueMsg.put("distanceKm", distanceKm);
+        continueMsg.put("distanceKm", authoritativeDistanceKm);
         continueMsg.put("passengerName", passenger.getName());
         messagingTemplate.convertAndSend("/topic/driver/" + driver.getId(), continueMsg);
 
@@ -1130,7 +1144,7 @@ public class TripService {
         Map<String, Object> result = tripToMap(saved);
         result.put("continued", true);
         result.put("oldTripId", completedTripId);
-        if (distanceKm > 10) {
+        if (authoritativeDistanceKm > 10) {
             result.put("longDistanceExtra", 1000);
             result.put("effectivePricePerKm", effectivePricePerKm / 100);
         }
