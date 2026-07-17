@@ -11,7 +11,7 @@ This is a read-only release-gate report for the isolated candidate. No productio
 
 - Backend worktree: `C:\Users\Laptop\Documents\tezgo-admin-security-containment`
 - Branch: `fix/admin-security-containment-wave-0`
-- HEAD: `b58a91bfb3953cdf9634bc138d88131e666cb39d`
+- Current branch HEAD: `a12d83aa0ed14df1ce7b0abc34ce610baaf73fc9` (documentation-only receipt commit); source/remediation HEAD: `b58a91bfb3953cdf9634bc138d88131e666cb39d`.
 - Parent: `38e1060b6c760cafea31baaccd1c85b8f4e52b61`
 - Working-tree changes before this receipt were the pre-existing untracked `logs/` only; the committed remediation was not rewritten.
 - Driver compatibility worktree remained separate at commit `79f4bf1c1232f36c2f2b2c7daea400ec87b957ee`.
@@ -96,7 +96,7 @@ Admin was kept separate and unmodified: worktree `C:\Users\Laptop\Documents\tezg
 - Path: `artifacts\tezgo-admin-security-wave-0-1-b58a91b-20260717T110429Z.jar`
 - Size: 154,113,860 bytes; read-only set.
 - SHA-256: `AFA930BE4624B95E385307DBB39733B0601985317A9D5C5D48DC22221F3F086D`
-- Built from HEAD `b58a91b`; migration head V50; class inventory 648 entries; route inventory 183 entries.
+- Built from source/remediation HEAD `b58a91b` before the documentation-only receipt commit; migration head V50; class inventory 648 entries; route inventory 183 entries.
 - Prior artifact hash `19012F...E82C9C` was not reused. Production-reference JAR hash remains `2EB3E1559B1EB2FCBA7EE7B1B7F55314F13AFF5A5AD373D02966FDA13341AABB`.
 
 ### P. Offline Git bundle
